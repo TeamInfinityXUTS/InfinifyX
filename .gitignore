@@ -1,3 +1,8 @@
 bdd100k/
 kaggle_key.txt
 .ipynb_checkpoints/
+data_preprocessing/bdd100k/
+data_preprocessing/bdd100k_tiny/
+data_preprocessing/bdd100k_tiny_data/
+__pycache__/
+.ipynb_checkpoints/

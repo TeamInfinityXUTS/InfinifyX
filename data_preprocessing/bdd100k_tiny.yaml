@@ -1,0 +1,6 @@
+
+train: bdd100k_tiny/train/images
+val: bdd100k_tiny/val/images
+
+nc: 10
+names: ['car','bus','truck','person','traffic light','traffic sign','bike','motor','train','other']
