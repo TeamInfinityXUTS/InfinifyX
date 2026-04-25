@@ -6,3 +6,10 @@ data_preprocessing/bdd100k_tiny/
 data_preprocessing/bdd100k_tiny_data/
 __pycache__/
 .ipynb_checkpoints/
+data_preprocessing/bdd100k*
+data_preprocessing/dataset_seg/
+data_preprocessing/clearml.conf
+data_preprocessing/bdd100k_tiny.yaml
+**/.ipynb_checkpoints/
+**/__pycache__/
+.DS_Store
