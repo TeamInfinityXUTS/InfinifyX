@@ -1,15 +1,25 @@
 import os
+import sys
 import argparse
 from clearml import PipelineController
 
+# ==========================================
+# 0. Secure Configuration Loading
+# ==========================================
+# Explicitly tell ClearML to use the local config file before running the pipeline
+current_dir = os.path.dirname(os.path.abspath(__file__))
+local_config_path = os.path.join(current_dir, 'clearml.conf')
 
-os.environ['CLEARML_WEB_HOST'] = 'https://app.clear.ml/'
-os.environ['CLEARML_API_HOST'] = 'https://api.clear.ml'
-os.environ['CLEARML_FILES_HOST'] = 'https://files.clear.ml'
-os.environ['CLEARML_API_ACCESS_KEY'] = 'R58U0GS1V7DPMV9POEA3L3E6WHH8EV'
-os.environ['CLEARML_API_SECRET_KEY'] = 'XQWoX03bgFcB4eJa6Ux8Kt7zmkaVmVdjg-3xBMa1kFdAdpywfbwfAKb8UzS-Rc2WWXU'
+if os.path.exists(local_config_path):
+    os.environ['CLEARML_CONFIG_FILE'] = local_config_path
+    print(f"[*] Loaded secure ClearML configuration from: {local_config_path}")
+else:
+    print(f"[!] Warning: Local clearml.conf not found at {local_config_path}.")
+    print("[!] Relying on system credentials or default configuration.")
 
+# ==========================================
 # 1. Define the specific step (function) for dataset upload
+# ==========================================
 def upload_dataset_step(input_path: str, dataset_name: str, dataset_project: str):
     from clearml import Dataset
     import os
@@ -35,7 +45,9 @@ def upload_dataset_step(input_path: str, dataset_name: str, dataset_project: str
     print(f"Dataset upload and finalization complete. Dataset ID: {dataset.id}")
     return dataset.id
 
+# ==========================================
 # 2. Main execution block for terminal running
+# ==========================================
 if __name__ == '__main__':
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Upload dataset to ClearML via Pipeline")
@@ -46,7 +58,7 @@ if __name__ == '__main__':
     # Initialize the Pipeline Controller
     pipe = PipelineController(
         name="Dataset_Upload_Pipeline",
-        project="InfinityX",
+        project="InfinityX", # Keeps it in the main InfinityX pipeline folder
         version="1.0.0",
         add_pipeline_tags=False
     )
@@ -69,6 +81,6 @@ if __name__ == '__main__':
     )
 
     # Execute the Pipeline locally
-    print("Starting Pipeline execution...")
+    print("🚀 Starting Pipeline execution...")
     pipe.start_locally(run_pipeline_steps_locally=True)
-    print("Pipeline execution finished!")
+    print("✅ Pipeline execution finished!")

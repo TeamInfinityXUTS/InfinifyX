@@ -1,27 +1,31 @@
-# InfinifyX
+# InfinifyX: Urban Driving Assistance System
 
-## Project Overview
-**InfinifyX** is a camera-based urban driving assistance system designed to enhance road safety by detecting environmental conditions and providing short-term risk warnings. 
+**InfinifyX** is a camera-based assistance system designed to enhance urban road safety. By leveraging computer vision and real-time inference, it provides low-cost, accessible safety warnings for everyday drivers, detecting potential hazards and environmental conditions in real-time.
 
-This project aims to provide a low-cost, accessible solution for everyday drivers who may not have access to expensive built-in vehicle assistance systems. By leveraging computer vision, InfinifyX offers real-time support in common urban driving scenarios.
+## 🚀 Project Pillars
+* **Real-Time Detection:** Processing live camera feeds to identify key road objects (vehicles, pedestrians, lanes).
+* **Risk Inference:** Applying logic to evaluate immediate environmental hazards.
+* **Warning Support:** Delivering intuitive and timely feedback to the driver for safer decision-making.
 
-## Business Definitions and Assumptions
-* **Core Objective:** A camera-based system that monitors road conditions and alerts drivers to potential risks in the short term.
-* **Target Audience:** Everyday drivers seeking simple and practical safety enhancements for their vehicles.
-* **Key Assumptions:**
-    * Users require intuitive and straightforward safety support.
-    * The system is optimized for standard urban driving environments.
-    * System performance may be influenced by external factors such as lighting conditions, weather, and camera hardware quality.
-
-## Project Scope
-The product focuses on three main technical pillars within the context of city-road scenarios:
-1.  **Real-Time Detection:** Identifying key road objects and conditions using live camera feeds.
-2.  **Risk Inference:** Applying logic to detect potential hazards in the immediate driving environment.
-3.  **Warning Support:** Providing clear and timely feedback to the driver to assist in safer decision-making.
-
-## Project Structure
-* `data_preprocessing/`: Contains scripts and notebooks for dataset handling and pipeline preparation.
-* `README.md`: Project documentation and overview.
 
 ---
-*Developed as part of the 42174 Artificial Intelligence Studio at UTS.*
+
+## 🛠 MLOps & Pipelines
+To ensure model robustness and reproducible data engineering, this project utilizes **ClearML** for pipeline orchestration:
+
+* **Dataset Upload Pipeline:** Automates the ingestion of raw urban driving data into centralized versioned storage.
+* **Data Augmentation Pipeline:** A self-contained workflow that applies geometric and pixel-level transformations (Albumentations) to YOLO-format datasets, automatically tracking lineage and generating augmented versions for model training.
+
+---
+
+## 📋 Key Assumptions
+* **Accessibility:** Optimized for standard camera hardware and consumer-grade mobile devices/computers.
+* **Environment:** Specifically tuned for standard urban driving scenarios (city roads, intersections).
+* **Robustness:** System performance is designed to account for variable lighting, weather conditions, and hardware quality.
+
+---
+
+### 💡 Recent Updates
+* Integrated **ClearML Pipeline Controller** for automated data workflows.
+* Implemented automated **YOLO-format augmentation** with safe coordinate clipping.
+* Standardized environment configuration using local `.conf` file management for enhanced security.
