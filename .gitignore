@@ -13,3 +13,6 @@ data_preprocessing/bdd100k_tiny.yaml
 **/.ipynb_checkpoints/
 **/__pycache__/
 .DS_Store
+**/augmented_dataset_temp/
+**/pipeline_augmented_temp/
+**/clearml.conf
