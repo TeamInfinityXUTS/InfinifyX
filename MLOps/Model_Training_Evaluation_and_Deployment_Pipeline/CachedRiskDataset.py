@@ -65,33 +65,23 @@ class CachedRiskDataset(torch.utils.data.Dataset):
 
         self.seq_len = seq_len
 
-        if os.path.exists(DATA_CACHE_PATH):
-            print("Loading cached graphs...")
-            self.data = torch.load(DATA_CACHE_PATH, weights_only=False)
-            print("Cache loaded:", len(self.data))
-            return
+        print("Building graph dataset...")
 
-        print("Building graph cache...")
-
-        #images = sorted([f for f in os.listdir(image_dir) if f.endswith(".jpg")])
         images = sorted([f for f in os.listdir(image_dir) if f.endswith(".jpg")])
-        #images = images[:int(len(images) * 0.05)]
         self.data = []
 
         for i in tqdm(range(len(images))):
             path = os.path.join(image_dir, images[i])
+
             det = extractor.batch_infer([path])[0]
-
             feat = extractor.extract(det)
-            graph = build_graph(feat)
 
+            graph = build_graph(feat)
             label = compute_risk_score(det)
 
-            # ✅ FIX 2: single graph only (NO list)
             self.data.append((graph, torch.tensor(label, dtype=torch.float32)))
 
-        torch.save(self.data, DATA_CACHE_PATH)
-        print("Cache saved.")
+        print(f"Dataset built: {len(self.data)} samples")
 
     def __len__(self):
         return len(self.data)
