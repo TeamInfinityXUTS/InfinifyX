@@ -17,7 +17,7 @@ class DatasetManager:
             dataset_name=self.name
         )
         path = dataset.get_mutable_local_copy(target_folder=target_folder)
-        print(f"✅ Dataset loaded: {path}")
+        print(f"Dataset loaded: {path}")
         return path
 
     def create_yaml(self, data_root):
@@ -76,7 +76,7 @@ class CBAM(nn.Module):
         super().__init__()
         self.r = r
 
-        self.built = False   # 🔥 关键
+        self.built = False
 
     def _build(self, c):
         hidden = max(1, c // self.r)
@@ -89,7 +89,7 @@ class CBAM(nn.Module):
 
         self.spatial = nn.Conv2d(2, 1, 7, padding=3)
 
-        self.built = True   # 🔥 锁死
+        self.built = True
 
     def forward(self, x):
         b, c, h, w = x.shape
@@ -134,10 +134,6 @@ import ultralytics.nn.tasks as tasks
 
 tasks.__dict__["CBAM"] = CBAM
 tasks.__dict__["SE"] = SE
-
-# ======================================================
-# 🚀 YOLO TRAINER
-# ======================================================
 class YOLOTrainer:
     #def __init__(self, weight="runs/detect/train/weights/best.pt", yaml="Yolov8_custom_p2.yaml"):
     def __init__(self, weight="runs/detect/runs/YOLOv8_BDD100K_detect/YOLOv8_CBAM_SE3_20260421_105054/weights/best.pt"):
@@ -150,9 +146,8 @@ class YOLOTrainer:
         self.weight = weight
         self.yaml = yaml
 
-        # 🔥 关键：P2模型必须用yaml
+
         if weight:
-            # ✔ 用P2结构 + 迁移学习
             #self.model = YOLO(self.yaml).load(self.weight)
             self.model = YOLO(self.weight)
         else:
@@ -164,26 +159,19 @@ class YOLOTrainer:
         results = self.model.train(
             data=data_yaml,
         
-            # =====================
-            # CORE
-            # =====================
-            epochs=1,
+            epochs=10,
             imgsz=960,
             batch=8,
         
             amp=True,
         
-            # =====================
-            # OPTIMIZER
-            # =====================
+
             lr0=0.00015,
             cos_lr=True,
             warmup_epochs=5,
             weight_decay=0.0005,
         
-            # =====================
-            # AUGMENTATION
-            # =====================
+
             mosaic=0.5,
             close_mosaic=15,
         
@@ -199,18 +187,12 @@ class YOLOTrainer:
             hsv_v=0.4,
         
             multi_scale=False, 
-        
-            # =====================
-            # TRAIN STRATEGY
-            # =====================
+
             freeze=5,
             patience=50,
         
             device=0,
-        
-            # =====================
-            # LOG
-            # =====================
+
             project=project_dir,
             name=f"{name}_{ts}"
         )
@@ -242,7 +224,7 @@ class YOLOTrainer:
             #resume=True,
         #)
 
-        print("✅ Done:", results.save_dir)
+        print("Done:", results.save_dir)
         return results.save_dir
 
 if __name__ == "__main__":
