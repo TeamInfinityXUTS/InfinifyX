@@ -96,10 +96,25 @@ def evaluation_step(graph_cache, model_path):
     from clearml import Task
     Task.init(project_name="MLOps_Level1", task_name="Evaluation")
 
-    data = torch.load(graph_cache, weights_only=False)
-
+    import torch
+    import numpy as np
+    from sklearn.metrics import classification_report, accuracy_score, precision_recall_fscore_support
     from torch.utils.data import Dataset, Subset
     from torch_geometric.data import Data
+
+    raw_data = torch.load(graph_cache, weights_only=False)
+
+
+    def parse_sample(sample):
+        if len(sample) == 2:
+            graph, label = sample
+            return graph, label
+        elif len(sample) == 3:
+            x, edge_index, label = sample
+            graph = Data(x=x, edge_index=edge_index)
+            return graph, label
+        else:
+            raise ValueError(f"Unknown format: {len(sample)}")
 
     class SimpleDataset(Dataset):
         def __init__(self, data):
@@ -109,29 +124,36 @@ def evaluation_step(graph_cache, model_path):
             return len(self.data)
 
         def __getitem__(self, idx):
-            x, edge_index, label = self.data[idx]
-            return Data(x=x, edge_index=edge_index), label
+            return parse_sample(self.data[idx])
 
-    dataset = SimpleDataset(data)
-
+    dataset = SimpleDataset(raw_data)
 
     train_size = int(0.8 * len(dataset))
     test_set = Subset(dataset, list(range(train_size, len(dataset))))
 
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = SpatioTemporalModel().to(device)
-    model.load_state_dict(torch.load(model_path))
+    checkpoint = torch.load(model_path, map_location=device)
+    model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
+    train_scores = [
+        dataset[i][1].item()
+        for i in range(train_size)
+    ]
+
+    low_t, high_t = np.percentile(train_scores, [33, 66])
+
+    print("\nThresholds:", low_t, high_t)
+
     def risk_to_class(score):
-        if score < 0.3:
-            return 0  # Low
-        elif score < 0.7:
-            return 1  # Medium
+        if score < low_t:
+            return 0
+        elif score < high_t:
+            return 1
         else:
-            return 2  # High
+            return 2
 
     y_true, y_pred = [], []
 
@@ -149,24 +171,22 @@ def evaluation_step(graph_cache, model_path):
     report = classification_report(
         y_true,
         y_pred,
+        labels=[0, 1, 2],
         target_names=["Low", "Medium", "High"],
-        digits=3
+        digits=3,
+        zero_division=0
     )
 
     acc = accuracy_score(y_true, y_pred)
 
-    print("\n===== 📊 GNN Classification Report =====")
+    print("\n===== GNN Classification Report =====")
     print(report)
     print(f"Accuracy: {acc:.3f}")
 
     task = Task.current_task()
 
     task.get_logger().report_text(report)
-    task.get_logger().report_scalar(
-        "metrics", "accuracy", value=float(acc), iteration=0
-    )
-
-    from sklearn.metrics import precision_recall_fscore_support
+    task.get_logger().report_scalar("metrics", "accuracy", value=float(acc), iteration=0)
 
     precision, recall, f1, _ = precision_recall_fscore_support(
         y_true, y_pred, average='macro'
