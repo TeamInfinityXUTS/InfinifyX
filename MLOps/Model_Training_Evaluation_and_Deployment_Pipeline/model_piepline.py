@@ -11,7 +11,7 @@ from sklearn.metrics import mean_squared_error
 import os
 
 
-@PipelineDecorator.component(cache=True)
+@PipelineDecorator.component(cache=False)
 def dataset_step(project, name):
     dm = DatasetManager(project, name)
     data_root = dm.load()
