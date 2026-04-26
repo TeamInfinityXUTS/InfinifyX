@@ -81,7 +81,7 @@ def gnn_train_step(graph_cache):
     trainer.train(train_set, None, epochs=10)
 
     model_path = "risk_model.pt"
-    torch.save(trainer.model.state_dict(), model_path)
+    torch.save({"model_state_dict": trainer.model.state_dict()}, model_path)
 
     return model_path
 
