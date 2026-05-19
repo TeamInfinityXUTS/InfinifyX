@@ -17,3 +17,6 @@ data_preprocessing/bdd100k_tiny.yaml
 **/augmented_dataset_temp/
 **/pipeline_augmented_temp/
 **/clearml.conf
+data_preprocessing/datasets/
+AI-Studio-ClearML/
+
