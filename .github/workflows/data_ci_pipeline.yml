@@ -35,25 +35,26 @@ jobs:
         import os
         from clearml import Task
 
-        # Connect to ClearML server using environment variables (GitHub Secrets)
-        # This creates a lightweight trigger task that enqueues the actual pipeline
         print("[CI] Connecting to ClearML server...")
 
-        task = Task.init(
+        # Use Task.create() (NOT Task.init()) so the task stays in 'created'
+        # status and can be enqueued. Task.init() marks it 'in_progress' immediately,
+        # which causes a 400 error when you then try to enqueue it.
+        task = Task.create(
             project_name="MLOps_Level2",
             task_name="[CI Trigger] Data Pipeline",
             task_type=Task.TaskTypes.controller,
-            reuse_last_task_id=False,
         )
 
         task.set_parameter("General/dataset_path", "data_preprocessing/datasets/bdd100k")
         task.set_parameter("General/subset_percentage", 1)
         task.set_parameter("General/output_dataset_name", "BDD100k_1percent_YOLO")
 
-        # Enqueue this task to the data_engineer queue on local agent
+        # Enqueue to the data_engineer queue - local agent will pick it up
         Task.enqueue(task, queue_name="data_engineer")
 
         print(f"[CI] Pipeline trigger task enqueued! Task ID: {task.id}")
         print(f"[CI] Monitor at: {os.environ.get('CLEARML_WEB_HOST')}/projects/*/experiments/{task.id}")
         print("[CI] Your local data_engineer agent will now pick up the task and run the pipeline.")
         EOF
+
