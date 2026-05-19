@@ -7,7 +7,7 @@ from clearml import PipelineController
 # 0. Secure Configuration Loading
 # ==========================================
 current_dir = os.path.dirname(os.path.abspath(__file__))
-local_config_path = os.path.join(current_dir, 'clearml.conf')
+local_config_path = os.path.abspath(os.path.join(current_dir, '..', '..', 'clearml.conf'))
 
 if os.path.exists(local_config_path):
     os.environ['CLEARML_CONFIG_FILE'] = local_config_path
