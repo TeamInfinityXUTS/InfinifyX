@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  run-pipeline-controller:
+  trigger-clearml-pipeline:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,13 +17,13 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: "3.10"
-        
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install clearml
 
-    - name: Execute Pipeline Controller
+    - name: Trigger ClearML Pipeline (Remote Execution)
       env:
         CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
         CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
@@ -31,5 +31,29 @@ jobs:
         CLEARML_WEB_HOST: ${{ secrets.CLEARML_WEB_HOST }}
         CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
       run: |
-        echo "Starting ClearML Pipeline Controller..."
-        python MLOps/DataProcessing/extract_convert_upload_pipeline.py
+        python - <<'EOF'
+        import os
+        from clearml import Task
+
+        # Connect to ClearML server using environment variables (GitHub Secrets)
+        # This creates a lightweight trigger task that enqueues the actual pipeline
+        print("[CI] Connecting to ClearML server...")
+
+        task = Task.init(
+            project_name="MLOps_Level2",
+            task_name="[CI Trigger] Data Pipeline",
+            task_type=Task.TaskTypes.controller,
+            reuse_last_task_id=False,
+        )
+
+        task.set_parameter("General/dataset_path", "data_preprocessing/datasets/bdd100k")
+        task.set_parameter("General/subset_percentage", 1)
+        task.set_parameter("General/output_dataset_name", "BDD100k_1percent_YOLO")
+
+        # Enqueue this task to the data_engineer queue on local agent
+        Task.enqueue(task, queue_name="data_engineer")
+
+        print(f"[CI] Pipeline trigger task enqueued! Task ID: {task.id}")
+        print(f"[CI] Monitor at: {os.environ.get('CLEARML_WEB_HOST')}/projects/*/experiments/{task.id}")
+        print("[CI] Your local data_engineer agent will now pick up the task and run the pipeline.")
+        EOF
