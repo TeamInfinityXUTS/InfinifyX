@@ -11,11 +11,18 @@ from clearml import PipelineDecorator, Dataset
 current_dir = os.path.dirname(os.path.abspath(__file__))
 local_config_path = os.path.abspath(os.path.join(current_dir, '..', '..', 'clearml.conf'))
 
-if os.path.exists(local_config_path):
-    os.environ['CLEARML_CONFIG_FILE'] = local_config_path
-    print(f"[*] Loaded secure ClearML configuration from: {local_config_path}")
+# In CI environments (e.g., GitHub Actions), credentials come from environment
+# variables (Secrets), so clearml.conf is not needed.
+is_ci = os.environ.get('CI', 'false').lower() == 'true'
+
+if not is_ci:
+    if os.path.exists(local_config_path):
+        os.environ['CLEARML_CONFIG_FILE'] = local_config_path
+        print(f"[*] Loaded secure ClearML configuration from: {local_config_path}")
+    else:
+        print(f"[!] Warning: Local clearml.conf not found at {local_config_path}.")
 else:
-    print(f"[!] Warning: Local clearml.conf not found at {local_config_path}.")
+    print("[*] Running in CI mode. Using environment variables for ClearML credentials.")
 
 
 # ==========================================
@@ -219,10 +226,19 @@ if __name__ == '__main__':
     ds_name = f"BDD100k_{percentage}percent_YOLO"
     
     print(f"Initiating pipeline with {percentage}% extraction from {input_ds_path}")
-    
-    # Run locally (Pipeline Controller will be executed locally, while components will be sent to the queue)
-    # The user requested it runs via data_engineer, which we specified in the decorator.
-    PipelineDecorator.run_locally()
+
+    if is_ci:
+        # --- CI Mode (GitHub Actions) ---
+        # Do NOT call run_locally(). This will submit the pipeline as a ClearML
+        # Task to the server. The local data_engineer agent will pick it up and
+        # execute it on the local machine where the dataset actually lives.
+        print("[*] CI mode: Submitting pipeline to ClearML. Local agent will execute.")
+    else:
+        # --- Local Debug Mode ---
+        # run_locally() makes the pipeline run entirely on this machine.
+        # Useful for local testing and debugging.
+        print("[*] Local mode: Running pipeline locally for debugging.")
+        PipelineDecorator.run_locally()
     
     extract_and_upload_pipeline(
         dataset_path=input_ds_path,
