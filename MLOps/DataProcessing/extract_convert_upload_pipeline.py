@@ -220,28 +220,55 @@ def extract_and_upload_pipeline(dataset_path: str, subset_percentage: int, outpu
 # 4. Execution Entry Point
 # ==========================================
 if __name__ == '__main__':
-    # Pipeline execution parameters
-    input_ds_path = os.path.abspath(os.path.join(current_dir, '..', '..', 'data_preprocessing', 'datasets', 'bdd100k'))
-    percentage = 1
-    ds_name = f"BDD100k_{percentage}percent_YOLO"
-    
-    print(f"Initiating pipeline with {percentage}% extraction from {input_ds_path}")
+    from clearml import Task as _Task
 
-    if is_ci:
-        # --- CI Mode (GitHub Actions) ---
-        # Do NOT call run_locally(). This will submit the pipeline as a ClearML
-        # Task to the server. The local data_engineer agent will pick it up and
-        # execute it on the local machine where the dataset actually lives.
-        print("[*] CI mode: Submitting pipeline to ClearML. Local agent will execute.")
+    # Check if we're running inside a ClearML Agent (agent sets this env var)
+    clearml_task_id = os.environ.get('CLEARML_TASK_ID')
+
+    if clearml_task_id:
+        # --- Agent Mode (triggered by CI or ClearML UI) ---
+        print(f"[*] Running inside ClearML Agent. Task ID: {clearml_task_id}")
+        task = _Task.init(continue_last_task=clearml_task_id)
+
+        # Read parameters set by the CI trigger
+        params = task.get_parameters()
+        ds_path = params.get("General/dataset_path", "data_preprocessing/datasets/bdd100k")
+        percentage = int(params.get("General/subset_percentage", 1))
+        ds_name = params.get("General/output_dataset_name", f"BDD100k_{percentage}percent_YOLO")
+
+        # The dataset_path from CI is relative. Resolve it:
+        # First try relative to the cloned repo working dir
+        if not os.path.isabs(ds_path):
+            # The dataset lives on the local D: drive, not in the cloned repo
+            local_dataset_path = r"D:\UTS\2026Autumn\42174 Artificial Intelligence Studio\Infinity\InfinifyX\data_preprocessing\datasets\bdd100k"
+            if os.path.exists(local_dataset_path):
+                ds_path = local_dataset_path
+                print(f"[*] Using local dataset at: {ds_path}")
+            else:
+                ds_path = os.path.abspath(ds_path)
+                print(f"[*] Resolved dataset path to: {ds_path}")
+
+        print(f"Initiating pipeline with {percentage}% extraction from {ds_path}")
+        PipelineDecorator.run_locally()
+
+        extract_and_upload_pipeline(
+            dataset_path=ds_path,
+            subset_percentage=percentage,
+            output_dataset_name=ds_name
+        )
     else:
         # --- Local Debug Mode ---
-        # run_locally() makes the pipeline run entirely on this machine.
-        # Useful for local testing and debugging.
+        input_ds_path = os.path.abspath(os.path.join(current_dir, '..', '..', 'data_preprocessing', 'datasets', 'bdd100k'))
+        percentage = 1
+        ds_name = f"BDD100k_{percentage}percent_YOLO"
+
+        print(f"Initiating pipeline with {percentage}% extraction from {input_ds_path}")
         print("[*] Local mode: Running pipeline locally for debugging.")
         PipelineDecorator.run_locally()
-    
-    extract_and_upload_pipeline(
-        dataset_path=input_ds_path,
-        subset_percentage=percentage,
-        output_dataset_name=ds_name
-    )
+
+        extract_and_upload_pipeline(
+            dataset_path=input_ds_path,
+            subset_percentage=percentage,
+            output_dataset_name=ds_name
+        )
+

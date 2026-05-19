@@ -37,15 +37,20 @@ jobs:
 
         print("[CI] Connecting to ClearML server...")
 
-        # Use Task.create() (NOT Task.init()) so the task stays in 'created'
-        # status and can be enqueued. Task.init() marks it 'in_progress' immediately,
-        # which causes a 400 error when you then try to enqueue it.
+        # Task.create() with repo/script info tells the agent:
+        #   1. Clone this Git repo
+        #   2. Checkout this branch
+        #   3. Run this script
         task = Task.create(
             project_name="MLOps_Level2",
             task_name="[CI Trigger] Data Pipeline",
-            task_type=Task.TaskTypes.controller,
+            task_type=Task.TaskTypes.data_processing,
+            repo="https://github.com/TeamInfinityXUTS/InfinifyX.git",
+            branch=os.environ.get("GITHUB_REF_NAME", "feat/data-engineering"),
+            script="MLOps/DataProcessing/extract_convert_upload_pipeline.py",
         )
 
+        # Add pipeline parameters so the script can read them
         task.set_parameter("General/dataset_path", "data_preprocessing/datasets/bdd100k")
         task.set_parameter("General/subset_percentage", 1)
         task.set_parameter("General/output_dataset_name", "BDD100k_1percent_YOLO")
@@ -54,7 +59,6 @@ jobs:
         Task.enqueue(task, queue_name="data_engineer")
 
         print(f"[CI] Pipeline trigger task enqueued! Task ID: {task.id}")
-        print(f"[CI] Monitor at: {os.environ.get('CLEARML_WEB_HOST')}/projects/*/experiments/{task.id}")
-        print("[CI] Your local data_engineer agent will now pick up the task and run the pipeline.")
+        print(f"[CI] Your local data_engineer agent will clone the repo and run the pipeline.")
         EOF
 
