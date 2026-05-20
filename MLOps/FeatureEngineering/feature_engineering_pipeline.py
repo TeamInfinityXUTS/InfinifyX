@@ -49,6 +49,65 @@ def graph_build_step(yolo_weight_path: str, yolo_cache_path: str, data_dir: str)
     from ultralytics import YOLO
     from torch_geometric.data import Data
 
+    # ---- Custom attention modules (must be registered before YOLO loads .pt) ----
+    # Yolov8_best.pt was trained with CBAM and SE blocks embedded in the
+    # architecture. Ultralytics looks them up in nn.tasks by name at load time,
+    # so they must be injected before calling YOLO().
+    import torch.nn as nn
+    import ultralytics.nn.tasks as _ul_tasks
+
+    class CBAM(nn.Module):
+        def __init__(self, r=16):
+            super().__init__()
+            self.r = r
+            self.built = False
+
+        def _build(self, c):
+            hidden = max(1, c // self.r)
+            self.mlp = nn.Sequential(
+                nn.Linear(c, hidden), nn.ReLU(), nn.Linear(hidden, c)
+            )
+            self.spatial = nn.Conv2d(2, 1, 7, padding=3)
+            self.built = True
+
+        def forward(self, x):
+            b, c, h, w = x.shape
+            if not self.built:
+                self._build(c)
+            avg = x.mean((2, 3))
+            mx  = x.amax((2, 3))
+            channel = torch.sigmoid(self.mlp(avg) + self.mlp(mx)).view(b, c, 1, 1)
+            x = x * channel
+            avg_p   = x.mean(1, keepdim=True)
+            max_p   = x.max(1, keepdim=True)[0]
+            spatial = torch.sigmoid(self.spatial(torch.cat([avg_p, max_p], dim=1)))
+            return x * spatial
+
+    class SE(nn.Module):
+        def __init__(self, r=16):
+            super().__init__()
+            self.r = r
+            self.built = False
+            self.avg = nn.AdaptiveAvgPool2d(1)
+
+        def _build(self, c):
+            hidden = max(1, c // self.r)
+            self.fc = nn.Sequential(
+                nn.Linear(c, hidden), nn.ReLU(), nn.Linear(hidden, c), nn.Sigmoid()
+            )
+            self.built = True
+
+        def forward(self, x):
+            b, c, _, _ = x.shape
+            if not self.built:
+                self._build(c)
+            y = self.avg(x).view(b, c)
+            return x * self.fc(y).view(b, c, 1, 1)
+
+    _ul_tasks.__dict__["CBAM"] = CBAM
+    _ul_tasks.__dict__["SE"]   = SE
+    print("[graph_build_step] Registered CBAM and SE into ultralytics.nn.tasks")
+
     # ---- Helper: build / reuse YOLO cache file ----
     def _build_yolo_cache(src_path: str, cache_path: str) -> str:
         if not os.path.exists(cache_path):
