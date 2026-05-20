@@ -338,8 +338,11 @@ if __name__ == "__main__":
         status = "OK" if os.path.exists(path) else "NOT FOUND"
         print(f"    [{status}] {label}: {path}")
 
-    # Dispatch pipeline — steps are queued to 'data_engineer' and picked up by
-    # the local clearml-agent daemon already running on that queue.
+    # Run the pipeline controller locally (avoids needing a 'services' queue).
+    # Individual steps (graph_build_step, upload_graph_cache_step) are still
+    # dispatched to the 'data_engineer' queue and picked up by the local agent.
+    PipelineDecorator.run_locally()
+
     feature_engineering_pipeline(
         yolo_weight_path=yolo_weight,
         yolo_cache_path=yolo_cache,
