@@ -1,0 +1,53 @@
+# ============================================================
+# InfinifyX — Python Dependencies
+# ============================================================
+# Install all:
+#   pip install -r requirements.txt
+#
+# NOTE: PyTorch and torch-geometric must be installed separately
+# with the correct CUDA/CPU variant (see instructions below).
+# ============================================================
+
+
+# ── Core ML / Deep Learning ─────────────────────────────────
+# Install PyTorch manually from https://pytorch.org/get-started/locally/
+# Example (CUDA 12.1):
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# Example (CPU only):
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+torchaudio
+
+# ── PyTorch Geometric ────────────────────────────────────────
+# Install with matching torch version from https://pyg.org/whl/
+# Example (torch 2.x + CUDA 12.1):
+#   pip install torch-geometric
+#   pip install torch-scatter torch-sparse torch-cluster torch-spline-conv \
+#       -f https://data.pyg.org/whl/torch-2.x.x+cu121.html
+torch-geometric
+
+# ── Computer Vision ──────────────────────────────────────────
+ultralytics              # YOLOv8 (Yolov8_best.pt, custom CBAM/SE backbone)
+opencv-python            # cv2 — frame decode/encode in inference server
+
+# ── Web / Inference Server ───────────────────────────────────
+fastapi                  # REST + WebSocket API framework
+uvicorn[standard]        # ASGI server (includes websockets + httptools)
+python-multipart         # required by FastAPI for form/file handling
+
+# ── MLOps / Experiment Tracking ─────────────────────────────
+clearml                  # Pipeline orchestration, dataset versioning, artifact upload
+
+# ── Classical ML ─────────────────────────────────────────────
+scikit-learn             # LogisticRegression, StandardScaler (Risk_prediction.py)
+joblib                   # Model serialisation for RiskPredictionModel (.pkl)
+
+# ── Data / Utilities ─────────────────────────────────────────
+numpy                    # Numerical arrays throughout the codebase
+tqdm                     # Progress bars in feature engineering pipeline
+pyyaml                   # YAML config parsing (yolo_trainer.py, dataset configs)
+matplotlib               # Risk score distribution plots (Risk_pipeline.py)
+
+# ── Augmentation (MLOps DataProcessing) ─────────────────────
+albumentations           # Geometric + pixel-level augmentation pipeline
