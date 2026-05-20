@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InfinifyX — Real-Time Risk Detection</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #080810;
+      color: #dde;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 18px 12px 32px;
+    }
+
+    /* ── Header ── */
+    header {
+      width: 100%;
+      max-width: 960px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: #fff;
+    }
+    #statusDot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #333;
+      flex-shrink: 0;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    #statusDot.connected  { background: #00e676; box-shadow: 0 0 8px #00e676; }
+    #statusDot.connecting { background: #ffea00; box-shadow: 0 0 8px #ffea00; }
+
+    /* ── Video container ── */
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 960px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #111;
+      aspect-ratio: 16 / 9;
+    }
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    /* Overlay canvas sits exactly on top of the video */
+    #overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    /* Hidden canvas used only to grab JPEG frames */
+    #capture { display: none; }
+
+    /* ── Risk banner ── */
+    #riskBanner {
+      position: absolute;
+      top: 12px; left: 12px;
+      padding: 7px 16px;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(4px);
+      border: 2px solid #444;
+      color: #aaa;
+      transition: border-color 0.25s, color 0.25s;
+      user-select: none;
+    }
+    #riskBanner.Low    { border-color: #00e676; color: #00e676; }
+    #riskBanner.Medium { border-color: #ffea00; color: #ffea00; }
+    #riskBanner.High   { border-color: #ff1744; color: #ff1744; }
+
+    /* ── Controls ── */
+    .controls {
+      margin-top: 14px;
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      max-width: 960px;
+    }
+    button {
+      padding: 10px 26px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: 0.38; cursor: default; transform: none; }
+    #btnStart { background: #1565c0; color: #fff; }
+    #btnStop  { background: #b71c1c; color: #fff; }
+
+    /* ── Stats bar ── */
+    #stats {
+      margin-top: 10px;
+      width: 100%;
+      max-width: 960px;
+      font-size: 0.78rem;
+      color: #666;
+      letter-spacing: 0.03em;
+    }
+
+    /* ── Placeholder when camera not started ── */
+    #placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: #444;
+      font-size: 1rem;
+      pointer-events: none;
+    }
+    #placeholder svg { opacity: 0.3; }
+    .video-wrap.active #placeholder { display: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div id="statusDot"></div>
+  <h1>InfinifyX — Real-Time Risk Detection</h1>
+</header>
+
+<div class="video-wrap" id="videoWrap">
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="overlay"></canvas>
+  <canvas id="capture"></canvas>
+
+  <div id="riskBanner">Risk: —</div>
+
+  <!-- camera-off placeholder -->
+  <div id="placeholder">
+    <svg width="56" height="56" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0
+               0 0 1-1v-3.5l4 4v-11l-4 4z"/>
+    </svg>
+    <span>Click "Start Camera" to begin</span>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="btnStart">▶ Start Camera</button>
+  <button id="btnStop" disabled>■ Stop</button>
+</div>
+
+<div id="stats">FPS: — &nbsp;|&nbsp; Detections: — &nbsp;|&nbsp; Score: —</div>
+
+<script>
+// ── Configuration ─────────────────────────────────────────────────────────────
+const WS_URL      = `ws://${location.host}/ws`;
+const SEND_FPS    = 10;       // frames sent to server per second
+const JPEG_QUALITY = 0.65;    // JPEG compression quality (0–1)
+
+// Risk → display colour map
+const RISK_COLOR = { Low: '#00e676', Medium: '#ffea00', High: '#ff1744' };
+
+// ── DOM references ─────────────────────────────────────────────────────────────
+const video      = document.getElementById('video');
+const overlay    = document.getElementById('overlay');
+const capture    = document.getElementById('capture');
+const riskBanner = document.getElementById('riskBanner');
+const statusDot  = document.getElementById('statusDot');
+const statsBar   = document.getElementById('stats');
+const videoWrap  = document.getElementById('videoWrap');
+const btnStart   = document.getElementById('btnStart');
+const btnStop    = document.getElementById('btnStop');
+
+const overlayCtx = overlay.getContext('2d');
+const captureCtx = capture.getContext('2d');
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let ws          = null;
+let stream      = null;
+let sendTimer   = null;
+let fpsInterval = null;
+let frameCount  = 0;
+let displayFps  = 0;
+
+// ── WebSocket helpers ─────────────────────────────────────────────────────────
+function connectWS() {
+  statusDot.className = 'connecting';
+  ws = new WebSocket(WS_URL);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen  = () => { statusDot.className = 'connected'; };
+  ws.onclose = () => { statusDot.className = ''; };
+  ws.onerror = (e) => console.error('[ws] error', e);
+  ws.onmessage = (evt) => {
+    try { drawOverlay(JSON.parse(evt.data)); }
+    catch (e) { console.warn('[ws] bad JSON', e); }
+  };
+}
+
+// ── Frame sender ──────────────────────────────────────────────────────────────
+function sendFrame() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;
+
+  capture.width  = vw;
+  capture.height = vh;
+  captureCtx.drawImage(video, 0, 0, vw, vh);
+
+  capture.toBlob(blob => {
+    if (!blob || ws.readyState !== WebSocket.OPEN) return;
+    blob.arrayBuffer().then(buf => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(buf);
+    });
+  }, 'image/jpeg', JPEG_QUALITY);
+
+  frameCount++;
+}
+
+// ── Overlay renderer ──────────────────────────────────────────────────────────
+function drawOverlay(data) {
+  const ow = overlay.width, oh = overlay.height;
+  const vw = video.videoWidth || ow;
+  const vh = video.videoHeight || oh;
+  const sx = ow / vw, sy = oh / vh;
+
+  overlayCtx.clearRect(0, 0, ow, oh);
+
+  const risk  = data.risk  || {};
+  const boxes = data.boxes || [];
+  const label = risk.label || '—';
+  const color = RISK_COLOR[label] || '#ffffff';
+  const score = typeof risk.score === 'number' ? risk.score : null;
+
+  // Update risk banner
+  riskBanner.textContent = `Risk: ${label}${score !== null ? '  (' + score.toFixed(3) + ')' : ''}`;
+  riskBanner.className   = label in RISK_COLOR ? label : '';
+
+  // Draw bounding boxes
+  boxes.forEach(b => {
+    const [x1, y1, x2, y2] = [
+      b.box[0] * sx, b.box[1] * sy,
+      b.box[2] * sx, b.box[3] * sy,
+    ];
+    const bw = x2 - x1, bh = y2 - y1;
+
+    // Box
+    overlayCtx.strokeStyle = color;
+    overlayCtx.lineWidth   = 2;
+    overlayCtx.strokeRect(x1, y1, bw, bh);
+
+    // Label tag
+    const tag = `${b.cls_name}  ${(b.confidence * 100).toFixed(0)}%`;
+    overlayCtx.font = 'bold 12px "Segoe UI", system-ui';
+    const tw = overlayCtx.measureText(tag).width;
+    const th = 16;
+    overlayCtx.fillStyle = color;
+    overlayCtx.fillRect(x1, y1 - th - 2, tw + 10, th + 2);
+    overlayCtx.fillStyle = '#000';
+    overlayCtx.fillText(tag, x1 + 5, y1 - 4);
+  });
+
+  // Stats bar
+  statsBar.textContent =
+    `FPS: ${displayFps}  |  Detections: ${boxes.length}  |  Score: ${score !== null ? score.toFixed(4) : '—'}`;
+}
+
+// ── Resize overlay to match rendered video ────────────────────────────────────
+function syncOverlaySize() {
+  overlay.width  = video.offsetWidth  || 960;
+  overlay.height = video.offsetHeight || 540;
+}
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+btnStart.addEventListener('click', async () => {
+  btnStart.disabled = true;
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'environment' },
+      audio: false,
+    });
+    video.srcObject = stream;
+    await video.play();
+
+    videoWrap.classList.add('active');
+    syncOverlaySize();
+
+    // Keep overlay size in sync with layout changes
+    const ro = new ResizeObserver(syncOverlaySize);
+    ro.observe(video);
+
+    connectWS();
+
+    sendTimer   = setInterval(sendFrame, 1000 / SEND_FPS);
+    fpsInterval = setInterval(() => { displayFps = frameCount; frameCount = 0; }, 1000);
+
+    btnStop.disabled = false;
+  } catch (err) {
+    alert('Camera access denied or unavailable:\n' + err.message);
+    btnStart.disabled = false;
+  }
+});
+
+// ── Stop ──────────────────────────────────────────────────────────────────────
+btnStop.addEventListener('click', () => {
+  clearInterval(sendTimer);
+  clearInterval(fpsInterval);
+
+  if (ws)     { ws.close(); ws = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+
+  video.srcObject = null;
+  videoWrap.classList.remove('active');
+
+  overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+  riskBanner.textContent = 'Risk: —';
+  riskBanner.className   = '';
+  statsBar.textContent   = 'FPS: — | Detections: — | Score: —';
+
+  btnStart.disabled = false;
+  btnStop.disabled  = true;
+});
+</script>
+</body>
+</html>
