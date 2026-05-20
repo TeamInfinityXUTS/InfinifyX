@@ -10,21 +10,25 @@
 
 
 # ── Core ML / Deep Learning ─────────────────────────────────
-# Install PyTorch manually from https://pytorch.org/get-started/locally/
-# Example (CUDA 12.1):
-#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-# Example (CPU only):
-#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-torch
-torchvision
-torchaudio
+# Target: PyTorch 2.6 + CUDA 12.6
+# (Tesla T4 / driver 595 / CUDA 13.2 — driver is backward-compatible with cu126 wheels)
+#
+# Step 1 — install PyTorch (run this BEFORE pip install -r requirements.txt):
+#   pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 \
+#       --index-url https://download.pytorch.org/whl/cu126
+#
+# CPU-only fallback:
+#   pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 \
+#       --index-url https://download.pytorch.org/whl/cpu
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0
 
 # ── PyTorch Geometric ────────────────────────────────────────
-# Install with matching torch version from https://pyg.org/whl/
-# Example (torch 2.x + CUDA 12.1):
+# Step 2 — install torch-geometric (after PyTorch is installed):
 #   pip install torch-geometric
 #   pip install torch-scatter torch-sparse torch-cluster torch-spline-conv \
-#       -f https://data.pyg.org/whl/torch-2.x.x+cu121.html
+#       -f https://data.pyg.org/whl/torch-2.6.0+cu126.html
 torch-geometric
 
 # ── Computer Vision ──────────────────────────────────────────
