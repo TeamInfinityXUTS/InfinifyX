@@ -315,9 +315,12 @@ if __name__ == "__main__":
     yolo_cache  = os.path.join(project_root, "models", "yolo", "yolo_cache_train.pt")
 
     # Adjust data_dir to the folder containing your inference images.
-    # Example: data_preprocessing/datasets/bdd100k/train/images
+    # Option A (quick test — 698 images):
+    #   data_preprocessing/datasets/bdd100k_subset_yolo/images/train/
+    # Option B (full run — 70 000 images, takes several hours):
+    #   data_preprocessing/datasets/bdd100k/train/images/
     data_dir = os.path.join(
-        project_root, "data_preprocessing", "datasets", "bdd100k", "train", "images"
+        project_root, "data_preprocessing", "datasets", "bdd100k_subset_yolo", "images", "train"
     )
     # ----------------------------------------
 
