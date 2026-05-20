@@ -109,14 +109,23 @@ class SE(nn.Module):
 # ──────────────────────────────────────────────────────────────────────────────
 
 class SpatioTemporalModel(nn.Module):
-    """Two-layer GCN → global mean pool → scalar risk score."""
+    """Two-layer GCN → global mean pool → scalar risk score.
 
-    def __init__(self, in_dim: int = 5, hidden: int = 64):
+    Architecture is inferred from the saved checkpoint (risk_model.pt):
+      - hidden = 128  (gcn1/gcn2 width)
+      - risk_head: Linear(128,64) [0] → ReLU [1] → Dropout [2] → Linear(64,1) [3]
+        Dropout has no state_dict keys, so indices 1 & 2 are non-parametric.
+    """
+
+    def __init__(self, in_dim: int = 5, hidden: int = 128):
         super().__init__()
         self.gcn1      = GCNConv(in_dim, hidden)
         self.gcn2      = GCNConv(hidden, hidden)
         self.risk_head = nn.Sequential(
-            nn.Linear(hidden, 64), nn.ReLU(), nn.Linear(64, 1)
+            nn.Linear(hidden, 64),  # index 0
+            nn.ReLU(),              # index 1
+            nn.Dropout(p=0.3),      # index 2  (no state, matches checkpoint layout)
+            nn.Linear(64, 1),       # index 3
         )
 
     def forward(self, g: Data) -> torch.Tensor:
