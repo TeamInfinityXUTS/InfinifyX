@@ -103,3 +103,69 @@ python MLOps\FeatureEngineering\feature_engineering_pipeline.py
 - Pipeline runs successfully end-to-end on the local `data_engineer` agent.
 - Output: `models/gnn/graph_cache.pt` — a list of `(torch_geometric.data.Data, torch.Tensor)` tuples ready for GNN training.
 - Artifact is versioned and accessible via ClearML UI under `MLOps_Level2 / Feature_Engineering_Pipeline`.
+
+---
+
+## Real-Time Inference Server
+
+**Date**: 2026-05-21
+**Context**: Created a FastAPI-based inference server that exposes a WebSocket endpoint for real-time, frame-by-frame risk detection using `Yolov8_best.pt` and `risk_model.pt` (GNN). A browser client captures the local camera and overlays bounding boxes and risk level on a live video feed.
+
+### Architecture:
+```
+Browser Client (server/static/index.html)
+  getUserMedia() → JPEG frame → WebSocket send
+  ← JSON {boxes, risk} → Canvas overlay + risk banner
+
+FastAPI Server (server/inference_server.py)
+  GET /          → serves index.html
+  WebSocket /ws  → receives JPEG bytes → YOLO → GNN → JSON response
+```
+
+### Actions Taken:
+
+1. **Created `server/inference_server.py`**:
+   - Loads `models/yolo/Yolov8_best.pt` at startup with `CBAM` and `SE` injected into `ultralytics.nn.tasks.__dict__` before calling `YOLO()` — identical pattern to training pipeline.
+   - Loads `models/gnn/risk_model.pt` into `SpatioTemporalModel` (2-layer GCN → global mean pool → MLP → scalar). Checkpoint format `{"model_state_dict": ...}` and raw state dict both supported.
+   - WebSocket handler at `/ws`: receives raw JPEG bytes → `cv2.imdecode` → `run_yolo()` → `build_graph()` → `gnn(graph)` → `classify_risk()` → sends JSON.
+   - `build_graph()` uses the same 5-dim node features `[cx, cy, conf, dist, cls]` and proximity threshold `< 0.3` as the feature engineering pipeline, ensuring consistency.
+   - Risk thresholds: score `< 0.33` → Low, `< 0.66` → Medium, `≥ 0.66` → High.
+   - Static files served from `server/static/` at `GET /`.
+
+2. **Created `server/static/index.html`** (single-file browser client):
+   - Requests camera via `getUserMedia({ video: {width:1280, height:720} })`.
+   - Captures frames to a hidden `<canvas>`, exports as JPEG blob, sends binary over WebSocket at 10 FPS.
+   - On message received: parses JSON, draws bounding boxes with class label + confidence on an overlay `<canvas>`, updates the risk banner colour (green/yellow/red).
+   - Displays live FPS, detection count, and raw risk score in a stats bar.
+
+3. **Model Weight Organisation**:
+   - `risk_model.pt` was already relocated to `models/gnn/risk_model.pt` (confirmed via `git ls-files`).
+   - Final `models/` layout:
+     ```
+     models/
+     ├── yolo/
+     │   ├── Yolov8_best.pt
+     │   └── yolo_cache_train.pt
+     └── gnn/
+         ├── GNN_best.pt
+         ├── risk_model.pt
+         └── graph_cache.pt
+     ```
+
+### Running the Server:
+```powershell
+# Install dependencies (once)
+pip install fastapi "uvicorn[standard]" opencv-python torch-geometric
+
+# Start server from project root
+.venv\Scripts\Activate.ps1
+python server\inference_server.py
+
+# Open in browser
+Start-Process "http://localhost:8000"
+```
+
+### Current Status:
+- Server loads both models at startup and serves the browser client at `http://localhost:8000`.
+- WebSocket inference pipeline: JPEG frame → YOLO detections → spatial graph → GNN risk score → JSON response.
+- Browser client overlays bounding boxes and a colour-coded risk banner (Low/Medium/High) in real time.
