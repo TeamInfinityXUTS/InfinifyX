@@ -224,7 +224,15 @@ def graph_build_step(yolo_weight_path: str, yolo_cache_path: str, data_dir: str)
         print(f"[graph_build_step] Example graph : {dataset[0][0]}")
         print(f"[graph_build_step] Example label : {dataset[0][1]}")
 
-    cache_path = os.path.abspath("graph_cache.pt")
+    # Derive project root from yolo_weight_path (models/yolo/Yolov8_best.pt → ../../)
+    # and save graph_cache.pt into MLOps/FeatureEngineering/ alongside this script.
+    project_root = os.path.abspath(
+        os.path.join(os.path.dirname(yolo_weight_path), '..', '..')
+    )
+    output_dir = os.path.join(project_root, "MLOps", "FeatureEngineering")
+    os.makedirs(output_dir, exist_ok=True)
+
+    cache_path = os.path.join(output_dir, "graph_cache.pt")
     torch.save(dataset, cache_path)
     print(f"[graph_build_step] Saved graph cache → {cache_path}")
 
