@@ -40,6 +40,8 @@ def validate_file(path, label):
 def dataset_step(project, name, target_folder="data"):
     import os
     import uuid
+    from clearml import Task
+    from DatasetManager import DatasetManager
 
     task = Task.init(
         project_name="MLOps_Product_Assisted_Driving",
@@ -64,20 +66,41 @@ def dataset_step(project, name, target_folder="data"):
 
 @PipelineDecorator.component(cache=False)
 def dataset_yaml_step(yaml_path):
+    import os
+    from clearml import Task
+
+    def validate_file_local(path, label):
+        if not path or not os.path.isfile(path):
+            raise FileNotFoundError(f"{label} not found: {path}")
+        return path
+
     Task.init(
         project_name="MLOps_Product_Assisted_Driving",
         task_name="YOLO_Dataset_Yaml"
     )
 
-    validate_file(yaml_path, "Dataset yaml")
+    validate_file_local(yaml_path, "Dataset yaml")
     print("Using existing dataset yaml:", yaml_path)
     return yaml_path
 
 
 @PipelineDecorator.component(execution_queue="Yolov8_training_v0.1")
 def yolo_train_step(yaml_path, weight):
-    register_yolo_custom_layers()
-    validate_file(yaml_path, "Dataset yaml")
+    import os
+    from clearml import Task
+    from yolo_trainer import YOLOTrainer
+    from CBAM import CBAM
+    from SE import SE
+    import ultralytics.nn.tasks as tasks
+
+    def validate_file_local(path, label):
+        if not path or not os.path.isfile(path):
+            raise FileNotFoundError(f"{label} not found: {path}")
+        return path
+
+    tasks.__dict__["CBAM"] = CBAM
+    tasks.__dict__["SE"] = SE
+    validate_file_local(yaml_path, "Dataset yaml")
 
     Task.init(
         project_name="MLOps_Product_Assisted_Driving",
@@ -100,7 +123,7 @@ def yolo_train_step(yaml_path, weight):
         "best.pt"
     )
 
-    validate_file(best_model_path, "Best YOLO model")
+    validate_file_local(best_model_path, "Best YOLO model")
     print("Best YOLO model:", best_model_path)
     return best_model_path
 
@@ -112,9 +135,26 @@ def yolo_evaluation_step(
     imgsz=960,
     batch=16
 ):
-    register_yolo_custom_layers()
-    validate_file(yaml_path, "Dataset yaml")
-    validate_file(model_path, "YOLO model")
+    import os
+    import torch
+    from clearml import Task
+    from ultralytics import YOLO
+    from CBAM import CBAM
+    from SE import SE
+    import ultralytics.nn.tasks as tasks
+
+    def validate_file_local(path, label):
+        if not path or not os.path.isfile(path):
+            raise FileNotFoundError(f"{label} not found: {path}")
+        return path
+
+    def get_yolo_device_local():
+        return 0 if torch.cuda.is_available() else "cpu"
+
+    tasks.__dict__["CBAM"] = CBAM
+    tasks.__dict__["SE"] = SE
+    validate_file_local(yaml_path, "Dataset yaml")
+    validate_file_local(model_path, "YOLO model")
 
     Task.init(
         project_name="MLOps_Product_Assisted_Driving",
@@ -127,7 +167,7 @@ def yolo_evaluation_step(
         split="val",
         imgsz=imgsz,
         batch=batch,
-        device=get_yolo_device(),
+        device=get_yolo_device_local(),
         plots=True
     )
 
@@ -172,7 +212,15 @@ def yolo_evaluation_step(
 
 @PipelineDecorator.component()
 def register_yolo_model_step(model_path, metrics):
-    validate_file(model_path, "YOLO model")
+    import os
+    from clearml import OutputModel, Task
+
+    def validate_file_local(path, label):
+        if not path or not os.path.isfile(path):
+            raise FileNotFoundError(f"{label} not found: {path}")
+        return path
+
+    validate_file_local(model_path, "YOLO model")
 
     task = Task.current_task()
     if task is None:
@@ -254,11 +302,8 @@ if __name__ == "__main__":
     PipelineDecorator.run_locally()
 
     result = yolo_training_evaluation_pipeline(
-        dataset_project="InfinifyX",
-        dataset_name="bdd100k",
-        target_folder="data",
+        yaml_path="data/dataset.yaml",
         weight="Model/Yolo_best.pt",
-        yaml_path=None,
         imgsz=960,
         batch=16
     )
