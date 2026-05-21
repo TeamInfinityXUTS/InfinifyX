@@ -15,8 +15,8 @@ DEFAULT_TARGET_FOLDER = "data"
 DEFAULT_WEIGHT = (
     "Model/Yolo_best.pt"
 )
-DEFAULT_IMAGE_SIZE = 960
-DEFAULT_BATCH_SIZE = 16
+DEFAULT_IMAGE_SIZE = 640
+DEFAULT_BATCH_SIZE = 4
 
 
 def register_yolo_custom_layers():
