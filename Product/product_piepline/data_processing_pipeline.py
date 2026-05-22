@@ -48,6 +48,12 @@ def data_preprocessing_step(dataset_path: str, subset_percentage: float) -> str:
     import json
     import random
 
+    # Defensive: ClearML may pass None if param parsing fails
+    if subset_percentage is None:
+        subset_percentage = 0.1
+        print(f"[WARN] subset_percentage was None — defaulting to {subset_percentage}")
+    subset_percentage = float(subset_percentage)
+
     print(f"Processing dataset from: {dataset_path}")
     print(f"Extracting {subset_percentage}% of the data...")
 

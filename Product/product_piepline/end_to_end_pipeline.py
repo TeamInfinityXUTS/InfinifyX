@@ -47,6 +47,12 @@ def data_preprocessing_step(dataset_path: str, subset_percentage: float) -> str:
     """Extract BDD100K subset, convert JSON→YOLO, create dataset.yaml."""
     import os, shutil, json, random
 
+    # Defensive: ClearML may pass None if param parsing fails
+    if subset_percentage is None:
+        subset_percentage = 0.1
+        print(f"[WARN] subset_percentage was None — defaulting to {subset_percentage}")
+    subset_percentage = float(subset_percentage)
+
     output_dir = os.path.join(os.path.dirname(dataset_path), "bdd100k_subset_yolo")
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
