@@ -199,15 +199,19 @@ def data_uploading_step(processed_dataset_path: str, dataset_name: str) -> str:
     # Setting the default queue for pipeline steps
     default_queue="data_engineer"
 )
-def extract_and_upload_pipeline(dataset_path: str, subset_percentage: int, output_dataset_name: str):
+def extract_and_upload_pipeline(dataset_path: str, subset_percentage: float, output_dataset_name: str, skip_upload: bool = True):
     """
     1. Extract a subset from the large dataset and convert BDD JSON to YOLO.
-    2. Upload the processed dataset to ClearML.
+    2. Upload the processed dataset to ClearML (skipped by default — slow & not needed).
     """
     processed_path = data_preprocessing_step(
         dataset_path=dataset_path, 
         subset_percentage=subset_percentage
     )
+    
+    if skip_upload:
+        print("[skip_upload] Skipping ClearML dataset upload (default behaviour).")
+        return processed_path
     
     dataset_id = data_uploading_step(
         processed_dataset_path=processed_path,
@@ -233,8 +237,9 @@ if __name__ == '__main__':
         # Read parameters set by the CI trigger
         params = task.get_parameters()
         ds_path = params.get("General/dataset_path", "data_preprocessing/datasets/bdd100k")
-        percentage = int(params.get("General/subset_percentage", 1))
+        percentage = float(params.get("General/subset_percentage", 0.1))
         ds_name = params.get("General/output_dataset_name", f"BDD100k_{percentage}percent_YOLO")
+        skip_up = str(params.get("General/skip_upload", "true")).lower() == "true"
 
         # The dataset_path from CI is relative. Resolve it:
         # First try relative to the cloned repo working dir
@@ -254,12 +259,13 @@ if __name__ == '__main__':
         extract_and_upload_pipeline(
             dataset_path=ds_path,
             subset_percentage=percentage,
-            output_dataset_name=ds_name
+            output_dataset_name=ds_name,
+            skip_upload=skip_up
         )
     else:
         # --- Local Debug Mode ---
         input_ds_path = os.path.abspath(os.path.join(current_dir, '..', '..', 'data_preprocessing', 'datasets', 'bdd100k'))
-        percentage = 1
+        percentage = 0.1
         ds_name = f"BDD100k_{percentage}percent_YOLO"
 
         print(f"Initiating pipeline with {percentage}% extraction from {input_ds_path}")
@@ -269,6 +275,7 @@ if __name__ == '__main__':
         extract_and_upload_pipeline(
             dataset_path=input_ds_path,
             subset_percentage=percentage,
-            output_dataset_name=ds_name
+            output_dataset_name=ds_name,
+            skip_upload=True
         )
 
