@@ -743,12 +743,38 @@ def end_to_end_pipeline(
 # EXECUTION ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
-    project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
+    from clearml import Task as _Task
 
-    dataset_path = os.path.join(
-        project_root, "data_preprocessing", "datasets", "bdd100k"
-    )
-    yolo_weight = os.path.join(project_root, "models", "yolo", "Yolov8_best.pt")
+    clearml_task_id = os.environ.get('CLEARML_TASK_ID')
+
+    if clearml_task_id:
+        # ── Agent / CI mode ──────────────────────────────────────────────
+        # Running inside a ClearML agent (triggered by CI or ClearML UI).
+        # Read parameters from the task and use the repo root as project_root.
+        print(f"[*] Agent mode. Task ID: {clearml_task_id}")
+        task = _Task.init(continue_last_task=clearml_task_id)
+        params = task.get_parameters().get("General", {})
+
+        # Resolve project root from the cloned repo working directory
+        project_root = os.getcwd()
+        dataset_path  = params.get("dataset_path",
+                        os.path.join(project_root, "data_preprocessing", "datasets", "bdd100k"))
+        if not os.path.isabs(dataset_path):
+            abs_path = os.path.join(project_root, dataset_path)
+            dataset_path = abs_path if os.path.exists(abs_path) else os.path.abspath(dataset_path)
+
+        yolo_weight   = os.path.join(project_root, "models", "yolo", "Yolov8_best.pt")
+        subset_pct    = int(params.get("subset_percentage", 1))
+        yolo_ep       = int(params.get("yolo_epochs", 2))
+        gnn_ep        = int(params.get("gnn_epochs", 3))
+        hpo_tr        = int(params.get("hpo_trials", 2))
+        multi_ep      = int(params.get("multi_epochs", 2))
+    else:
+        # ── Local debug mode ─────────────────────────────────────────────
+        project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
+        dataset_path = os.path.join(project_root, "data_preprocessing", "datasets", "bdd100k")
+        yolo_weight  = os.path.join(project_root, "models", "yolo", "Yolov8_best.pt")
+        subset_pct, yolo_ep, gnn_ep, hpo_tr, multi_ep = 1, 2, 3, 2, 2
 
     print(f"[*] Project root  : {project_root}")
     print(f"[*] Dataset path  : {dataset_path}")
@@ -756,24 +782,23 @@ if __name__ == "__main__":
 
     # PipelineDecorator.run_locally() runs the controller + all steps
     # in the local process (subprocess per step). No agent queue needed.
-    # To dispatch steps to the data_engineer agent instead, remove this line.
     PipelineDecorator.run_locally()
 
     result = end_to_end_pipeline(
         dataset_path=dataset_path,
-        subset_percentage=1,       # 1% of BDD100K for quick test
+        subset_percentage=subset_pct,
         yolo_init_weight=yolo_weight,
-        yolo_epochs=2,
+        yolo_epochs=yolo_ep,
         yolo_imgsz=640,
         yolo_batch=4,
         gnn_hidden_dim=128,
         gnn_dropout=0.3,
         gnn_lr=5e-4,
-        gnn_epochs=3,
+        gnn_epochs=gnn_ep,
         gnn_batch_size=8,
-        hpo_trials=2,
+        hpo_trials=hpo_tr,
         hpo_epochs=2,
-        multi_epochs=2,
+        multi_epochs=multi_ep,
     )
     print("\n===== End-to-End Pipeline Complete =====")
     print(result)
