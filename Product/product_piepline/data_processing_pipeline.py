@@ -42,7 +42,7 @@ else:
 # 1. Preprocessing Component
 # ==========================================
 @PipelineDecorator.component(cache=True, execution_queue="data_engineer")
-def data_preprocessing_step(dataset_path: str, subset_percentage: int) -> str:
+def data_preprocessing_step(dataset_path: str, subset_percentage: float) -> str:
     import os
     import shutil
     import json
@@ -189,8 +189,9 @@ def data_uploading_step(processed_dataset_path: str, dataset_name: str) -> str:
 )
 def data_processing_pipeline(
     dataset_path: str,
-    subset_percentage: int,
+    subset_percentage: float,
     output_dataset_name: str,
+    skip_upload: bool = True,
 ):
     """
     Full data processing pipeline:
@@ -203,6 +204,9 @@ def data_processing_pipeline(
         dataset_path=dataset_path,
         subset_percentage=subset_percentage,
     )
+    if skip_upload:
+        print("[skip_upload] Skipping dataset upload (skip_upload=True)")
+        return processed_path
     dataset_id = data_uploading_step(
         processed_dataset_path=processed_path,
         dataset_name=output_dataset_name,
@@ -224,7 +228,7 @@ if __name__ == '__main__':
         task = _Task.init(continue_last_task=clearml_task_id)
         params = task.get_parameters()
         ds_path    = params.get("General/dataset_path", "data_preprocessing/datasets/bdd100k")
-        percentage = int(params.get("General/subset_percentage", 1))
+        percentage = float(params.get("General/subset_percentage", 0.1))
         ds_name    = params.get("General/output_dataset_name",
                                 f"BDD100k_{percentage}percent_YOLO")
 
@@ -241,12 +245,13 @@ if __name__ == '__main__':
             dataset_path=ds_path,
             subset_percentage=percentage,
             output_dataset_name=ds_name,
+            skip_upload=True,
         )
     else:
         # Local debug mode
         project_root   = os.path.abspath(os.path.join(current_dir, '..', '..'))
         input_ds_path  = os.path.join(project_root, 'data_preprocessing', 'datasets', 'bdd100k')
-        percentage     = 1
+        percentage     = 0.1
         ds_name        = f"BDD100k_{percentage}percent_YOLO"
 
         print(f"[*] Project root  : {project_root}")
@@ -258,4 +263,5 @@ if __name__ == '__main__':
             dataset_path=input_ds_path,
             subset_percentage=percentage,
             output_dataset_name=ds_name,
+            skip_upload=True,
         )

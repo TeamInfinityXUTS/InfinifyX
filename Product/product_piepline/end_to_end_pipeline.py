@@ -11,7 +11,9 @@ Chains all 6 product pipeline stages into a single ClearML pipeline:
   6. Multi-Model Selection  → train GCN + GraphSAGE, select best architecture
 
 Training steps are intentionally small for quick validation:
-  YOLO: 2 epochs, GNN: 3 epochs, HPO: 2 trials × 2 epochs, Multi: 2 archs × 2 epochs
+  YOLO: 1 epoch, GNN: 1 epoch, HPO: 2 trials × 1 epoch, Multi: 2 archs × 1 epoch
+  Subset: 0.1% of BDD100K
+  Models saved to models/e2e/ (never overwrite existing models/)
 
 Run:
   python Product/product_piepline/end_to_end_pipeline.py
@@ -41,7 +43,7 @@ else:
 # STEP 1 — Data Processing
 # ═══════════════════════════════════════════════════════════════════════════
 @PipelineDecorator.component(cache=True, execution_queue="data_engineer")
-def data_preprocessing_step(dataset_path: str, subset_percentage: int) -> str:
+def data_preprocessing_step(dataset_path: str, subset_percentage: float) -> str:
     """Extract BDD100K subset, convert JSON→YOLO, create dataset.yaml."""
     import os, shutil, json, random
 
@@ -172,10 +174,13 @@ def yolo_train_step(yaml_path: str, init_weight: str, epochs: int,
 
     model = YOLO(init_weight)
     device = 0 if torch.cuda.is_available() else "cpu"
+    # Save to models/e2e/ to avoid overwriting production models
+    e2e_dir = os.path.join("models", "e2e", "yolo")
+    os.makedirs(e2e_dir, exist_ok=True)
     results = model.train(
         data=yaml_path, epochs=epochs, imgsz=imgsz, batch=batch,
-        device=device, project="runs/e2e_yolo", name="yolo_cbam_se",
-        lr0=0.001, cos_lr=True, warmup_epochs=1, patience=5,
+        device=device, project=e2e_dir, name="yolo_cbam_se",
+        lr0=0.001, cos_lr=True, warmup_epochs=0, patience=5,
     )
     best_path = os.path.join(str(results.save_dir), "weights", "best.pt")
     if not os.path.isfile(best_path):
@@ -334,7 +339,8 @@ def graph_build_step(yolo_weight_path: str, yolo_cache_path: str, data_dir: str)
         dataset.append((graph, torch.tensor(score, dtype=torch.float32)))
 
     project_root = os.path.abspath(os.path.join(os.path.dirname(yolo_weight_path), "..", ".."))
-    out_dir = os.path.join(project_root, "models", "gnn")
+    # Save to models/e2e/gnn/ to avoid overwriting production graph_cache.pt
+    out_dir = os.path.join(project_root, "models", "e2e", "gnn")
     os.makedirs(out_dir, exist_ok=True)
     cache_path = os.path.join(out_dir, "graph_cache.pt")
     torch.save(dataset, cache_path)
@@ -398,7 +404,8 @@ def gnn_train_step(graph_cache_path: str, hidden_dim: int, dropout: float,
     model = SpatioTemporalModel(hidden_dim=hidden_dim, dropout=dropout).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     loss_fn = nn.MSELoss()
-    best_loss, model_path = float("inf"), "risk_gnn_model.pt"
+    best_loss, model_path = float("inf"), os.path.join("models", "e2e", "gnn", "risk_gnn_model.pt")
+    os.makedirs(os.path.dirname(model_path), exist_ok=True)
 
     for ep in range(epochs):
         model.train(); total = 0
@@ -619,7 +626,8 @@ def multi_model_step(graph_cache_path: str, epochs: int = 2) -> dict:
         print(f"[multi_model] {arch}: acc={acc:.3f} f1={f1:.3f}")
 
         # Register model
-        model_path = f"risk_{arch}_model.pt"
+        model_path = os.path.join("models", "e2e", "gnn", f"risk_{arch}_model.pt")
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
         torch.save({"model_state_dict": model.state_dict(), "architecture": arch,
                      "hidden_dim": 128, "dropout": 0.3}, model_path)
         out_model = OutputModel(task=Task.current_task(), name=f"Risk_{arch.upper()}_Model",
@@ -643,20 +651,21 @@ def multi_model_step(graph_cache_path: str, epochs: int = 2) -> dict:
 )
 def end_to_end_pipeline(
     dataset_path: str,
-    subset_percentage: int  = 1,
+    subset_percentage: float = 0.1,
     yolo_init_weight: str  = "models/yolo/Yolov8_best.pt",
-    yolo_epochs: int       = 2,
+    yolo_epochs: int       = 1,
     yolo_imgsz: int        = 640,
     yolo_batch: int        = 4,
     fe_data_dir: str       = "",
     gnn_hidden_dim: int    = 128,
     gnn_dropout: float     = 0.3,
     gnn_lr: float          = 5e-4,
-    gnn_epochs: int        = 3,
+    gnn_epochs: int        = 1,
     gnn_batch_size: int    = 8,
     hpo_trials: int        = 2,
-    hpo_epochs: int        = 2,
-    multi_epochs: int      = 2,
+    hpo_epochs: int        = 1,
+    multi_epochs: int      = 1,
+    skip_upload: bool      = True,
 ):
     """
     End-to-End Assisted Driving Pipeline
@@ -665,11 +674,14 @@ def end_to_end_pipeline(
     Step 2a yolo_train_step           → Trained YOLOv8-CBAM-SE best.pt
     Step 2b yolo_eval_step            → mAP / precision / recall metrics
     Step 3a graph_build_step          → graph_cache.pt (spatial graph dataset)
-    Step 3b upload_graph_cache_step   → Upload to ClearML
+    Step 3b upload_graph_cache_step   → Upload to ClearML (skippable)
     Step 4a gnn_train_step            → Trained SpatioTemporalModel
     Step 4b gnn_eval_step             → Risk classification metrics
     Step 5  hpo_step                  → Best GNN hyperparameters
     Step 6  multi_model_step          → Best architecture (GCN vs GraphSAGE)
+
+    All trained models are saved under models/e2e/ to avoid overwriting
+    existing production models in models/yolo/ and models/gnn/.
     """
     # Step 1: Data Processing
     yaml_path = data_preprocessing_step(
@@ -702,7 +714,10 @@ def end_to_end_pipeline(
         yolo_cache_path=yolo_cache,
         data_dir=fe_data_dir,
     )
-    upload_graph_cache_step(graph_cache_path=graph_cache)
+
+    # Upload to ClearML (skip by default — slow and not needed for validation)
+    if not skip_upload:
+        upload_graph_cache_step(graph_cache_path=graph_cache)
 
     # Step 4: GNN Training & Evaluation
     gnn_model = gnn_train_step(
@@ -764,17 +779,17 @@ if __name__ == "__main__":
             dataset_path = abs_path if os.path.exists(abs_path) else os.path.abspath(dataset_path)
 
         yolo_weight   = os.path.join(project_root, "models", "yolo", "Yolov8_best.pt")
-        subset_pct    = int(params.get("subset_percentage", 1))
-        yolo_ep       = int(params.get("yolo_epochs", 2))
-        gnn_ep        = int(params.get("gnn_epochs", 3))
+        subset_pct    = float(params.get("subset_percentage", 0.1))
+        yolo_ep       = int(params.get("yolo_epochs", 1))
+        gnn_ep        = int(params.get("gnn_epochs", 1))
         hpo_tr        = int(params.get("hpo_trials", 2))
-        multi_ep      = int(params.get("multi_epochs", 2))
+        multi_ep      = int(params.get("multi_epochs", 1))
     else:
         # ── Local debug mode ─────────────────────────────────────────────
         project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
         dataset_path = os.path.join(project_root, "data_preprocessing", "datasets", "bdd100k")
         yolo_weight  = os.path.join(project_root, "models", "yolo", "Yolov8_best.pt")
-        subset_pct, yolo_ep, gnn_ep, hpo_tr, multi_ep = 1, 2, 3, 2, 2
+        subset_pct, yolo_ep, gnn_ep, hpo_tr, multi_ep = 0.1, 1, 1, 2, 1
 
     print(f"[*] Project root  : {project_root}")
     print(f"[*] Dataset path  : {dataset_path}")
@@ -797,8 +812,9 @@ if __name__ == "__main__":
         gnn_epochs=gnn_ep,
         gnn_batch_size=8,
         hpo_trials=hpo_tr,
-        hpo_epochs=2,
+        hpo_epochs=1,
         multi_epochs=multi_ep,
+        skip_upload=True,
     )
     print("\n===== End-to-End Pipeline Complete =====")
     print(result)
