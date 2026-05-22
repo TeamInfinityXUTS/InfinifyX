@@ -25,11 +25,6 @@ html,body{width:100%;height:100%;background:#c7d2fe;
   position:relative;overflow:hidden;
   box-shadow:0 0 60px rgba(0,0,0,.25)}
 
-/* ── Status bar ────────────────────────────────────── */
-.sbar{height:26px;background:var(--navy);color:#fff;
-  display:flex;justify-content:space-between;align-items:center;
-  padding:0 14px;font-size:11px;font-weight:600;flex-shrink:0}
-
 /* ── Header ────────────────────────────────────────── */
 .hdr{height:var(--hdr);background:var(--navy);color:#fff;
   display:flex;justify-content:center;align-items:center;
@@ -183,12 +178,6 @@ html,body{width:100%;height:100%;background:#c7d2fe;
 </head>
 <body>
 <div class="shell">
-
-  <!-- Status bar -->
-  <div class="sbar">
-    <span id="clock">9:41</span>
-    <span>▐▌▌ 5G 🔋</span>
-  </div>
 
   <!-- Header -->
   <header class="hdr">Smart Drive · Road Guardian</header>
@@ -482,15 +471,8 @@ const CLS_COLOR = {
   train:'#6366f1', other:'#94a3b8',
 };
 
-// ─── Clock ──────────────────────────────────────────────────
-function tick(){
-  const n=new Date();
-  document.getElementById('clock').textContent=
-    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
-}
-tick(); setInterval(tick,30000);
+// --- Screen routing ---
 
-// ─── Screen routing ─────────────────────────────────────────
 function showScr(name){
   ['home','detect','tutorial','settings','history'].forEach(s=>{
     document.getElementById('scr-'+s).classList.toggle('hidden', s!==name);
