@@ -29,18 +29,26 @@ else:
 # 1. Preprocessing Component
 # ==========================================
 @PipelineDecorator.component(cache=True, execution_queue="data_engineer")
-def data_preprocessing_step(dataset_path: str, subset_percentage: float) -> str:
+def data_preprocessing_step(dataset_path: str, subset_percentage=None) -> str:
     import os
     import sys
     import shutil
     import json
     import random
     
-    # Defensive: ClearML may pass None if param parsing fails
-    if subset_percentage is None:
-        subset_percentage = 0.1
-        print(f"[WARN] subset_percentage was None — defaulting to {subset_percentage}")
-    subset_percentage = float(subset_percentage)
+    # Defensive: ClearML may pass None or string if param parsing fails
+    DEFAULT_PCT = 0.1
+    try:
+        if subset_percentage is None or subset_percentage == "" or str(subset_percentage).lower() == "none":
+            subset_percentage = DEFAULT_PCT
+            print(f"[WARN] subset_percentage was None/empty — defaulting to {DEFAULT_PCT}")
+        subset_percentage = float(subset_percentage)
+        if subset_percentage <= 0:
+            print(f"[WARN] subset_percentage <= 0 — defaulting to {DEFAULT_PCT}")
+            subset_percentage = DEFAULT_PCT
+    except (TypeError, ValueError) as e:
+        print(f"[WARN] Failed to parse subset_percentage={subset_percentage!r}: {e} — defaulting to {DEFAULT_PCT}")
+        subset_percentage = DEFAULT_PCT
     
     print(f"Processing dataset from: {dataset_path}")
     print(f"Extracting {subset_percentage}% of the data...")
