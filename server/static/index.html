@@ -1,345 +1,728 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>InfinifyX — Real-Time Risk Detection</title>
-  <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>Smart Drive · Road Guardian</title>
+<style>
+/* ── Variables ────────────────────────────────────── */
+:root{
+  --navy:#0d1b3e; --navy2:#1a2f5e;
+  --blue:#2563eb; --blue2:#3b82f6;
+  --green:#22c55e; --orange:#f97316; --red:#ef4444;
+  --bg:#eef2ff; --white:#fff;
+  --text:#1e293b; --muted:#64748b;
+  --r:16px; --nav:68px; --hdr:54px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:#c7d2fe;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  display:flex;justify-content:center;align-items:flex-start}
 
-    body {
-      background: #080810;
-      color: #dde;
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-      padding: 18px 12px 32px;
-    }
+/* ── App Shell ─────────────────────────────────────── */
+.shell{width:100%;max-width:420px;min-height:100svh;
+  background:var(--bg);display:flex;flex-direction:column;
+  position:relative;overflow:hidden;
+  box-shadow:0 0 60px rgba(0,0,0,.25)}
 
-    /* ── Header ── */
-    header {
-      width: 100%;
-      max-width: 960px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 16px;
-    }
-    header h1 {
-      font-size: 1.25rem;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      color: #fff;
-    }
-    #statusDot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      background: #333;
-      flex-shrink: 0;
-      transition: background 0.3s, box-shadow 0.3s;
-    }
-    #statusDot.connected  { background: #00e676; box-shadow: 0 0 8px #00e676; }
-    #statusDot.connecting { background: #ffea00; box-shadow: 0 0 8px #ffea00; }
+/* ── Status bar ────────────────────────────────────── */
+.sbar{height:26px;background:var(--navy);color:#fff;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:0 14px;font-size:11px;font-weight:600;flex-shrink:0}
 
-    /* ── Video container ── */
-    .video-wrap {
-      position: relative;
-      width: 100%;
-      max-width: 960px;
-      border-radius: 10px;
-      overflow: hidden;
-      background: #111;
-      aspect-ratio: 16 / 9;
-    }
-    #video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    /* Overlay canvas sits exactly on top of the video */
-    #overlay {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-    }
-    /* Hidden canvas used only to grab JPEG frames */
-    #capture { display: none; }
+/* ── Header ────────────────────────────────────────── */
+.hdr{height:var(--hdr);background:var(--navy);color:#fff;
+  display:flex;justify-content:center;align-items:center;
+  font-size:17px;font-weight:700;letter-spacing:.2px;flex-shrink:0}
 
-    /* ── Risk banner ── */
-    #riskBanner {
-      position: absolute;
-      top: 12px; left: 12px;
-      padding: 7px 16px;
-      border-radius: 6px;
-      font-size: 1rem;
-      font-weight: 700;
-      letter-spacing: 0.07em;
-      background: rgba(0, 0, 0, 0.55);
-      backdrop-filter: blur(4px);
-      border: 2px solid #444;
-      color: #aaa;
-      transition: border-color 0.25s, color 0.25s;
-      user-select: none;
-    }
-    #riskBanner.Low    { border-color: #00e676; color: #00e676; }
-    #riskBanner.Medium { border-color: #ffea00; color: #ffea00; }
-    #riskBanner.High   { border-color: #ff1744; color: #ff1744; }
+/* ── Screens ───────────────────────────────────────── */
+.scr{flex:1;overflow-y:auto;padding-bottom:var(--nav)}
+.scr.hidden{display:none}
 
-    /* ── Controls ── */
-    .controls {
-      margin-top: 14px;
-      display: flex;
-      gap: 10px;
-      width: 100%;
-      max-width: 960px;
-    }
-    button {
-      padding: 10px 26px;
-      border-radius: 6px;
-      border: none;
-      cursor: pointer;
-      font-size: 0.9rem;
-      font-weight: 600;
-      transition: opacity 0.2s, transform 0.1s;
-    }
-    button:active { transform: scale(0.97); }
-    button:disabled { opacity: 0.38; cursor: default; transform: none; }
-    #btnStart { background: #1565c0; color: #fff; }
-    #btnStop  { background: #b71c1c; color: #fff; }
+/* ══ HOME ══════════════════════════════════════════════ */
+.hero{background:linear-gradient(155deg,var(--navy) 0%,var(--navy2) 100%);
+  padding:28px 20px 44px;display:flex;flex-direction:column;
+  align-items:center;gap:6px}
+.hero svg{width:190px;height:130px}
+.hero-title{color:#fff;font-size:24px;font-weight:800;margin-top:6px}
+.hero-sub{color:rgba(255,255,255,.6);font-size:13px}
 
-    /* ── Stats bar ── */
-    #stats {
-      margin-top: 10px;
-      width: 100%;
-      max-width: 960px;
-      font-size: 0.78rem;
-      color: #666;
-      letter-spacing: 0.03em;
-    }
+.status-panel{margin:-22px 14px 0;background:var(--white);
+  border-radius:var(--r);box-shadow:0 4px 20px rgba(0,0,0,.1);overflow:hidden}
+.s-item{display:flex;align-items:center;gap:12px;padding:14px 16px;
+  border-bottom:1px solid #f1f5f9;font-size:14px;color:var(--text)}
+.s-item:last-child{border-bottom:none}
+.s-icon{font-size:19px;width:30px;text-align:center}
+.s-check{margin-left:auto;font-size:18px}
 
-    /* ── Placeholder when camera not started ── */
-    #placeholder {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      color: #444;
-      font-size: 1rem;
-      pointer-events: none;
-    }
-    #placeholder svg { opacity: 0.3; }
-    .video-wrap.active #placeholder { display: none; }
-  </style>
+.home-btns{padding:18px 14px;display:flex;flex-direction:column;gap:10px}
+.btn-start{width:100%;padding:17px;background:var(--blue);color:#fff;
+  font-size:16px;font-weight:700;border:none;border-radius:50px;cursor:pointer;
+  box-shadow:0 6px 20px rgba(37,99,235,.4);transition:transform .1s}
+.btn-start:active{transform:scale(.98)}
+.btn-start:disabled{opacity:.6;cursor:not-allowed}
+.start-hint{text-align:center;color:var(--muted);font-size:12px;line-height:1.5}
+.btn-tut{width:100%;padding:13px;background:transparent;color:var(--blue);
+  font-size:14px;font-weight:600;border:2px solid var(--blue);
+  border-radius:50px;cursor:pointer}
+
+/* ══ DETECT ════════════════════════════════════════════ */
+#scr-detect{background:#08101e;padding:0;display:flex;flex-direction:column}
+#scr-detect.hidden{display:none}
+
+.r-banner{display:flex;align-items:center;gap:10px;padding:11px 14px;
+  background:var(--green);color:#fff;flex-shrink:0;transition:background .3s}
+.r-banner.medium{background:var(--orange)}
+.r-banner.high{background:var(--red)}
+.r-banner-icon{font-size:20px}
+.r-banner-txt{flex:1}
+.r-banner-txt strong{display:block;font-size:14px;font-weight:700}
+.r-banner-txt small{font-size:11px;opacity:.9}
+
+.info-row{display:flex;gap:8px;padding:8px 10px;flex-shrink:0}
+.icard{flex:1;border-radius:12px;padding:10px 12px;background:#111827}
+.icard-lbl{color:rgba(255,255,255,.55);font-size:10px;margin-bottom:3px}
+.icard-val{font-size:14px;font-weight:700;color:#fff}
+.score-num{font-size:34px;font-weight:900;line-height:1;margin:2px 0}
+.score-num.low{color:var(--green)}.score-num.medium{color:var(--orange)}.score-num.high{color:var(--red)}
+.rbar{height:4px;background:#1e293b;border-radius:2px;margin-top:5px}
+.rfill{height:100%;border-radius:2px;background:var(--green);transition:width .4s,background .4s}
+.dist-num{font-size:30px;font-weight:900;color:var(--green);line-height:1;margin-top:4px}
+.dist-unit{color:rgba(255,255,255,.5);font-size:11px}
+
+.cam-wrap{position:relative;flex:1;min-height:0;background:#000;overflow:hidden}
+#video{width:100%;height:100%;object-fit:cover;display:block}
+#overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+
+.voice-pill{display:flex;align-items:center;justify-content:center;gap:8px;
+  margin:7px 14px;padding:9px 18px;background:rgba(255,255,255,.1);
+  border-radius:50px;color:#fff;font-size:13px;flex-shrink:0}
+.voice-pill.muted{opacity:.35}
+.pulse{animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* ══ BOTTOM NAV ════════════════════════════════════════ */
+.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);
+  width:100%;max-width:420px;height:var(--nav);background:var(--white);
+  display:flex;align-items:center;border-top:1px solid #e2e8f0;z-index:200}
+.nav.dark{background:#0d1b3e;border-color:#1a2f5e}
+.nbtn{flex:1;border:none;background:none;display:flex;flex-direction:column;
+  align-items:center;gap:2px;font-size:20px;cursor:pointer;
+  color:var(--muted);padding:8px 0}
+.nbtn span{font-size:9px;font-weight:700;letter-spacing:.3px}
+.nbtn.on{color:var(--blue)}
+.nav.dark .nbtn{color:rgba(255,255,255,.45)}
+.nav.dark .nbtn.on{color:var(--blue2)}
+.stop-btn{width:58px;height:58px;margin-top:-16px;background:var(--red);
+  border-radius:50%;border:4px solid #fff;display:flex;align-items:center;
+  justify-content:center;font-size:22px;cursor:pointer;flex-shrink:0;
+  box-shadow:0 4px 14px rgba(239,68,68,.5)}
+.stop-btn.hidden{display:none}
+
+/* ══ TUTORIAL ══════════════════════════════════════════ */
+#scr-tutorial{background:var(--white);padding:16px}
+.tut-hdr{text-align:center;padding:14px 0 20px}
+.tut-hdr h2{font-size:20px;font-weight:800;color:var(--text)}
+.tut-hdr p{color:var(--muted);font-size:13px;margin-top:3px}
+.tstep{display:flex;gap:14px;padding:14px;margin-bottom:10px;
+  background:var(--bg);border-radius:var(--r)}
+.snum{width:34px;height:34px;flex-shrink:0;background:var(--blue);color:#fff;
+  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:15px}
+.stxt h3{font-size:14px;font-weight:700;color:var(--text);margin-bottom:3px}
+.stxt p{font-size:12px;color:var(--muted);line-height:1.55}
+.legend-box{margin:16px 0 8px}
+.legend-box h3{font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px}
+.l-item{display:flex;align-items:center;gap:10px;padding:10px 13px;
+  border-radius:10px;margin-bottom:7px;font-size:13px}
+.l-item.low{background:#dcfce7}.l-item.med{background:#fff7ed}.l-item.hi{background:#fee2e2}
+.ldot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.ldot.low{background:var(--green)}.ldot.med{background:var(--orange)}.ldot.hi{background:var(--red)}
+
+/* ══ SETTINGS ══════════════════════════════════════════ */
+#scr-settings{background:#f8fafc;padding:14px}
+.sec-title{font-size:11px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.5px;margin:16px 0 6px 4px}
+.sec-card{background:var(--white);border-radius:var(--r);overflow:hidden;
+  box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.set-row{display:flex;align-items:center;justify-content:space-between;
+  padding:13px 15px;border-bottom:1px solid #f1f5f9}
+.set-row:last-child{border-bottom:none}
+.set-lbl{font-size:14px;color:var(--text)}
+.set-sub{font-size:11px;color:var(--muted);margin-top:1px}
+.set-row select,.set-row input[type=text]{
+  border:1px solid #e2e8f0;border-radius:8px;padding:5px 8px;
+  font-size:12px;color:var(--text);background:#fff}
+.tog{width:48px;height:27px;border-radius:14px;background:#e2e8f0;
+  position:relative;cursor:pointer;border:none;transition:background .2s}
+.tog.on{background:var(--blue)}
+.tog::after{content:'';position:absolute;width:21px;height:21px;
+  border-radius:50%;background:#fff;top:3px;left:3px;
+  transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.tog.on::after{transform:translateX(21px)}
+.save-btn{background:var(--blue);color:#fff;border:none;
+  padding:7px 18px;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px}
+.full-row{flex-direction:column;align-items:flex-start;gap:7px}
+.full-row input{width:100%;padding:8px 11px;border:1px solid #e2e8f0;
+  border-radius:8px;font-size:13px}
+
+/* ══ HISTORY ═══════════════════════════════════════════ */
+#scr-history{background:#f8fafc;padding:14px}
+.h-hdr{text-align:center;padding:14px 0 16px}
+.h-hdr h2{font-size:20px;font-weight:800;color:var(--text)}
+.h-empty{text-align:center;padding:50px 0;color:var(--muted)}
+.h-empty .ico{font-size:44px;display:block;margin-bottom:10px}
+.ev-card{background:var(--white);border-radius:12px;padding:11px 15px;
+  margin-bottom:9px;display:flex;align-items:center;gap:12px;
+  box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.ev-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.ev-lbl{font-size:13px;font-weight:600;color:var(--text)}
+.ev-time{font-size:11px;color:var(--muted);margin-top:1px}
+.ev-score{font-weight:800;font-size:15px;margin-left:auto}
+</style>
 </head>
 <body>
+<div class="shell">
 
-<header>
-  <div id="statusDot"></div>
-  <h1>InfinifyX — Real-Time Risk Detection</h1>
-</header>
-
-<div class="video-wrap" id="videoWrap">
-  <video id="video" autoplay muted playsinline></video>
-  <canvas id="overlay"></canvas>
-  <canvas id="capture"></canvas>
-
-  <div id="riskBanner">Risk: —</div>
-
-  <!-- camera-off placeholder -->
-  <div id="placeholder">
-    <svg width="56" height="56" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0
-               0 0 1-1v-3.5l4 4v-11l-4 4z"/>
-    </svg>
-    <span>Click "Start Camera" to begin</span>
+  <!-- Status bar -->
+  <div class="sbar">
+    <span id="clock">9:41</span>
+    <span>▐▌▌ 5G 🔋</span>
   </div>
-</div>
 
-<div class="controls">
-  <button id="btnStart">▶ Start Camera</button>
-  <button id="btnStop" disabled>■ Stop</button>
-</div>
+  <!-- Header -->
+  <header class="hdr">Smart Drive · Road Guardian</header>
 
-<div id="stats">FPS: — &nbsp;|&nbsp; Detections: — &nbsp;|&nbsp; Score: —</div>
+  <!-- ══ HOME ══ -->
+  <div class="scr" id="scr-home">
+    <div class="hero">
+      <!-- Inline SVG: road + car + shield -->
+      <svg viewBox="0 0 200 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Road -->
+        <rect x="55" y="88" width="90" height="42" rx="2" fill="#1e293b"/>
+        <rect x="96" y="91" width="8" height="13" rx="2" fill="white" opacity=".5"/>
+        <rect x="96" y="112" width="8" height="12" rx="2" fill="white" opacity=".5"/>
+        <!-- Car body -->
+        <rect x="68" y="66" width="64" height="28" rx="9" fill="#60a5fa"/>
+        <!-- Roof -->
+        <rect x="77" y="53" width="44" height="18" rx="7" fill="#93c5fd"/>
+        <!-- Windows -->
+        <rect x="80" y="55" width="16" height="12" rx="3" fill="#1e3a8a" opacity=".8"/>
+        <rect x="101" y="55" width="16" height="12" rx="3" fill="#1e3a8a" opacity=".8"/>
+        <!-- Wheels -->
+        <circle cx="82" cy="96" r="8" fill="#0f172a"/>
+        <circle cx="82" cy="96" r="3" fill="#475569"/>
+        <circle cx="118" cy="96" r="8" fill="#0f172a"/>
+        <circle cx="118" cy="96" r="3" fill="#475569"/>
+        <!-- Lights -->
+        <rect x="68" y="71" width="9" height="5" rx="2" fill="#fbbf24"/>
+        <rect x="123" y="71" width="9" height="5" rx="2" fill="#fbbf24"/>
+        <!-- Shield -->
+        <path d="M158 14 L178 22 L178 44 Q178 60 158 70 Q138 60 138 44 L138 22 Z" fill="#1d4ed8" opacity=".95"/>
+        <path d="M158 20 L173 27 L173 44 Q173 57 158 65 Q143 57 143 44 L143 27 Z" fill="#3b82f6"/>
+        <!-- Checkmark -->
+        <path d="M151 44 L156 51 L167 37" stroke="white" stroke-width="3"
+          stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Glow rings -->
+        <circle cx="158" cy="43" r="22" stroke="#60a5fa" stroke-width="1.5"
+          stroke-dasharray="4 4" opacity=".45"/>
+        <circle cx="158" cy="43" r="30" stroke="#60a5fa" stroke-width="1"
+          stroke-dasharray="3 6" opacity=".25"/>
+      </svg>
+      <h2 class="hero-title">Welcome Back</h2>
+      <p class="hero-sub">Urban Road Assisted Driving System</p>
+    </div>
+
+    <div class="status-panel">
+      <div class="s-item">
+        <span class="s-icon">📷</span>
+        <span>Camera Ready</span>
+        <span class="s-check" id="chk-cam">⏳</span>
+      </div>
+      <div class="s-item">
+        <span class="s-icon">🔊</span>
+        <span>Voice Alert On</span>
+        <span class="s-check" id="chk-voice">✅</span>
+      </div>
+      <div class="s-item">
+        <span class="s-icon">🛡️</span>
+        <span>System Check Passed</span>
+        <span class="s-check" id="chk-sys">⏳</span>
+      </div>
+    </div>
+
+    <div class="home-btns">
+      <button class="btn-start" id="btn-start" onclick="startDetection()">
+        ▶&nbsp; Start Detection
+      </button>
+      <p class="start-hint">Tap Start Detection to enter the live road monitoring screen.</p>
+      <button class="btn-tut" onclick="showScr('tutorial')">📖&nbsp; View Tutorial</button>
+    </div>
+  </div><!-- /home -->
+
+  <!-- ══ DETECT ══ -->
+  <div class="scr hidden" id="scr-detect">
+    <!-- Risk banner -->
+    <div class="r-banner" id="r-banner">
+      <span class="r-banner-icon" id="b-icon">🛡️</span>
+      <div class="r-banner-txt">
+        <strong id="b-title">Monitoring Active</strong>
+        <small id="b-sub">Scanning road environment…</small>
+      </div>
+      <span>›</span>
+    </div>
+
+    <!-- Info cards -->
+    <div class="info-row">
+      <div class="icard">
+        <div class="icard-lbl">🛡 Risk Level</div>
+        <div class="icard-val" id="r-label">Low</div>
+        <div class="score-num low" id="r-score">0</div>
+        <div class="rbar"><div class="rfill" id="r-fill" style="width:0%"></div></div>
+      </div>
+      <div class="icard">
+        <div class="icard-lbl">🚗 Distance · Front Vehicle</div>
+        <div class="dist-num" id="dist-num">—</div>
+        <div class="dist-unit" id="dist-unit">m</div>
+      </div>
+    </div>
+
+    <!-- Camera -->
+    <div class="cam-wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <!-- Voice pill -->
+    <div class="voice-pill" id="voice-pill">
+      <span>🔊</span>
+      <span>Voice Warning On</span>
+      <span class="pulse">◌ ◌ ◌</span>
+    </div>
+  </div><!-- /detect -->
+
+  <!-- ══ TUTORIAL ══ -->
+  <div class="scr hidden" id="scr-tutorial">
+    <div class="tut-hdr">
+      <h2>📖 How to Use</h2>
+      <p>Smart Drive · Road Guardian Guide</p>
+    </div>
+
+    <div class="tstep">
+      <div class="snum">1</div>
+      <div class="stxt">
+        <h3>Allow Camera Access</h3>
+        <p>When prompted, grant the browser camera permission. The system uses your device camera to detect road objects in real time.</p>
+      </div>
+    </div>
+    <div class="tstep">
+      <div class="snum">2</div>
+      <div class="stxt">
+        <h3>Tap Start Detection</h3>
+        <p>Press the Start Detection button on the Home screen. The camera activates and frames are streamed to the AI inference server automatically.</p>
+      </div>
+    </div>
+    <div class="tstep">
+      <div class="snum">3</div>
+      <div class="stxt">
+        <h3>Read the Risk Dashboard</h3>
+        <p>The monitoring screen shows your current <b>Risk Level</b> (Low / Medium / High), a <b>0–100 risk score</b>, and the estimated <b>distance</b> to the nearest front vehicle.</p>
+      </div>
+    </div>
+    <div class="tstep">
+      <div class="snum">4</div>
+      <div class="stxt">
+        <h3>Bounding Box Colours</h3>
+        <p>Detected objects are highlighted:
+          <b style="color:#3b82f6">Blue</b> = car/bus/truck &nbsp;
+          <b style="color:#a855f7">Purple</b> = person &nbsp;
+          <b style="color:#ef4444">Red</b> = traffic light &nbsp;
+          <b style="color:#f97316">Orange</b> = bike/motor.
+        </p>
+      </div>
+    </div>
+    <div class="tstep">
+      <div class="snum">5</div>
+      <div class="stxt">
+        <h3>Voice Alerts</h3>
+        <p>When risk reaches Medium or High, a spoken warning plays automatically. Toggle voice in Settings.</p>
+      </div>
+    </div>
+    <div class="tstep">
+      <div class="snum">6</div>
+      <div class="stxt">
+        <h3>Stop Monitoring</h3>
+        <p>Tap the red ⏹ Stop button at the bottom of the monitoring screen to end the session and return Home.</p>
+      </div>
+    </div>
+
+    <div style="padding:0 4px 16px">
+      <div class="legend-box">
+        <h3>Risk Levels Explained</h3>
+        <div class="l-item low"><span class="ldot low"></span>
+          <div><b>Low (0–33)</b><br><small>Road is clear. Drive normally.</small></div>
+        </div>
+        <div class="l-item med"><span class="ldot med"></span>
+          <div><b>Medium (34–66)</b><br><small>Potential hazard ahead — stay alert.</small></div>
+        </div>
+        <div class="l-item hi"><span class="ldot hi"></span>
+          <div><b>High (67–100)</b><br><small>Immediate risk detected — slow down!</small></div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /tutorial -->
+
+  <!-- ══ SETTINGS ══ -->
+  <div class="scr hidden" id="scr-settings">
+    <div style="text-align:center;padding:16px 0 4px">
+      <div style="font-size:26px">⚙️</div>
+      <h2 style="font-size:19px;font-weight:800;color:var(--text);margin-top:4px">Settings</h2>
+    </div>
+
+    <div class="sec-title">Detection</div>
+    <div class="sec-card">
+      <div class="set-row">
+        <div><div class="set-lbl">Frame Rate</div><div class="set-sub">Frames sent per second</div></div>
+        <select id="set-fps" onchange="cfg.fps=+this.value">
+          <option value="5">5 fps</option>
+          <option value="10" selected>10 fps</option>
+          <option value="15">15 fps</option>
+          <option value="20">20 fps</option>
+        </select>
+      </div>
+      <div class="set-row">
+        <div><div class="set-lbl">Image Quality</div><div class="set-sub">JPEG compression</div></div>
+        <select id="set-qual" onchange="cfg.quality=+this.value">
+          <option value="0.5">Low (fast)</option>
+          <option value="0.7" selected>Medium</option>
+          <option value="0.9">High</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="sec-title">Alerts</div>
+    <div class="sec-card">
+      <div class="set-row">
+        <div><div class="set-lbl">Voice Alerts</div><div class="set-sub">Announce risk level aloud</div></div>
+        <button class="tog on" id="tog-voice" onclick="toggleVoice(this)"></button>
+      </div>
+      <div class="set-row">
+        <div><div class="set-lbl">Alert From</div><div class="set-sub">Minimum level to alert</div></div>
+        <select id="set-thresh" onchange="cfg.alertThresh=this.value">
+          <option value="medium" selected>Medium+</option>
+          <option value="high">High only</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="sec-title">Server</div>
+    <div class="sec-card">
+      <div class="set-row full-row">
+        <div class="set-lbl">WebSocket URL</div>
+        <input type="text" id="set-ws" value="">
+      </div>
+      <div class="set-row" style="justify-content:flex-end">
+        <button class="save-btn"
+          onclick="cfg.wsUrl=document.getElementById('set-ws').value;
+                   document.getElementById('set-ws').style.borderColor='var(--green)'">
+          Save
+        </button>
+      </div>
+    </div>
+
+    <div style="text-align:center;padding:20px;color:var(--muted);font-size:11px">
+      Smart Drive · Road Guardian v1.0<br>
+      InfinifyX — Urban Driving Safety System
+    </div>
+  </div><!-- /settings -->
+
+  <!-- ══ HISTORY ══ -->
+  <div class="scr hidden" id="scr-history">
+    <div class="h-hdr">
+      <h2>🕐 Detection History</h2>
+    </div>
+    <div id="hist-list">
+      <div class="h-empty">
+        <span class="ico">📋</span>
+        No events recorded yet.<br>Start a session to log risk events.
+      </div>
+    </div>
+  </div><!-- /history -->
+
+  <!-- ══ BOTTOM NAV ══ -->
+  <nav class="nav" id="nav">
+    <button class="nbtn on" id="nb-home" onclick="showScr('home')">🏠<span>Home</span></button>
+    <button class="stop-btn hidden" id="nb-stop" onclick="stopDetection()">⏹</button>
+    <button class="nbtn" id="nb-hist" onclick="showScr('history')">🕐<span>History</span></button>
+    <button class="nbtn" id="nb-set"  onclick="showScr('settings')">⚙️<span>Settings</span></button>
+  </nav>
+
+</div><!-- /shell -->
 
 <script>
-// ── Configuration ─────────────────────────────────────────────────────────────
-const WS_URL      = `ws://${location.host}/ws`;
-const SEND_FPS    = 10;       // frames sent to server per second
-const JPEG_QUALITY = 0.65;    // JPEG compression quality (0–1)
+// ─── Config ────────────────────────────────────────────────
+const cfg = {
+  fps: 10, quality: 0.7,
+  wsUrl: `ws://${location.host}/ws`,
+  voiceOn: true,
+  alertThresh: 'medium',
+};
+document.getElementById('set-ws').value = cfg.wsUrl;
 
-// Risk → display colour map
-const RISK_COLOR = { Low: '#00e676', Medium: '#ffea00', High: '#ff1744' };
+// ─── State ─────────────────────────────────────────────────
+let ws=null, camStream=null, sendTimer=null, curScr='home';
+let lastSpokenLabel=null;
+const histEvents=[];
 
-// ── DOM references ─────────────────────────────────────────────────────────────
-const video      = document.getElementById('video');
-const overlay    = document.getElementById('overlay');
-const capture    = document.getElementById('capture');
-const riskBanner = document.getElementById('riskBanner');
-const statusDot  = document.getElementById('statusDot');
-const statsBar   = document.getElementById('stats');
-const videoWrap  = document.getElementById('videoWrap');
-const btnStart   = document.getElementById('btnStart');
-const btnStop    = document.getElementById('btnStop');
+const CLS_COLOR = {
+  car:'#3b82f6', bus:'#2563eb', truck:'#1d4ed8',
+  person:'#a855f7',
+  'traffic light':'#ef4444', 'traffic sign':'#eab308',
+  bike:'#f97316', motor:'#f97316',
+  train:'#6366f1', other:'#94a3b8',
+};
 
-const overlayCtx = overlay.getContext('2d');
-const captureCtx = capture.getContext('2d');
-
-// ── State ─────────────────────────────────────────────────────────────────────
-let ws          = null;
-let stream      = null;
-let sendTimer   = null;
-let fpsInterval = null;
-let frameCount  = 0;
-let displayFps  = 0;
-
-// ── WebSocket helpers ─────────────────────────────────────────────────────────
-function connectWS() {
-  statusDot.className = 'connecting';
-  ws = new WebSocket(WS_URL);
-  ws.binaryType = 'arraybuffer';
-
-  ws.onopen  = () => { statusDot.className = 'connected'; };
-  ws.onclose = () => { statusDot.className = ''; };
-  ws.onerror = (e) => console.error('[ws] error', e);
-  ws.onmessage = (evt) => {
-    try { drawOverlay(JSON.parse(evt.data)); }
-    catch (e) { console.warn('[ws] bad JSON', e); }
-  };
+// ─── Clock ──────────────────────────────────────────────────
+function tick(){
+  const n=new Date();
+  document.getElementById('clock').textContent=
+    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
 }
+tick(); setInterval(tick,30000);
 
-// ── Frame sender ──────────────────────────────────────────────────────────────
-function sendFrame() {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  const vw = video.videoWidth, vh = video.videoHeight;
-  if (!vw || !vh) return;
-
-  capture.width  = vw;
-  capture.height = vh;
-  captureCtx.drawImage(video, 0, 0, vw, vh);
-
-  capture.toBlob(blob => {
-    if (!blob || ws.readyState !== WebSocket.OPEN) return;
-    blob.arrayBuffer().then(buf => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(buf);
-    });
-  }, 'image/jpeg', JPEG_QUALITY);
-
-  frameCount++;
-}
-
-// ── Overlay renderer ──────────────────────────────────────────────────────────
-function drawOverlay(data) {
-  const ow = overlay.width, oh = overlay.height;
-  const vw = video.videoWidth || ow;
-  const vh = video.videoHeight || oh;
-  const sx = ow / vw, sy = oh / vh;
-
-  overlayCtx.clearRect(0, 0, ow, oh);
-
-  const risk  = data.risk  || {};
-  const boxes = data.boxes || [];
-  const label = risk.label || '—';
-  const color = RISK_COLOR[label] || '#ffffff';
-  const score = typeof risk.score === 'number' ? risk.score : null;
-
-  // Update risk banner
-  riskBanner.textContent = `Risk: ${label}${score !== null ? '  (' + score.toFixed(3) + ')' : ''}`;
-  riskBanner.className   = label in RISK_COLOR ? label : '';
-
-  // Draw bounding boxes
-  boxes.forEach(b => {
-    const [x1, y1, x2, y2] = [
-      b.box[0] * sx, b.box[1] * sy,
-      b.box[2] * sx, b.box[3] * sy,
-    ];
-    const bw = x2 - x1, bh = y2 - y1;
-
-    // Box
-    overlayCtx.strokeStyle = color;
-    overlayCtx.lineWidth   = 2;
-    overlayCtx.strokeRect(x1, y1, bw, bh);
-
-    // Label tag
-    const tag = `${b.cls_name}  ${(b.confidence * 100).toFixed(0)}%`;
-    overlayCtx.font = 'bold 12px "Segoe UI", system-ui';
-    const tw = overlayCtx.measureText(tag).width;
-    const th = 16;
-    overlayCtx.fillStyle = color;
-    overlayCtx.fillRect(x1, y1 - th - 2, tw + 10, th + 2);
-    overlayCtx.fillStyle = '#000';
-    overlayCtx.fillText(tag, x1 + 5, y1 - 4);
+// ─── Screen routing ─────────────────────────────────────────
+function showScr(name){
+  ['home','detect','tutorial','settings','history'].forEach(s=>{
+    document.getElementById('scr-'+s).classList.toggle('hidden', s!==name);
   });
-
-  // Stats bar
-  statsBar.textContent =
-    `FPS: ${displayFps}  |  Detections: ${boxes.length}  |  Score: ${score !== null ? score.toFixed(4) : '—'}`;
+  const nav=document.getElementById('nav');
+  const stopBtn=document.getElementById('nb-stop');
+  ['home','hist','set'].forEach(id=>{
+    const el=document.getElementById('nb-'+id);
+    if(el) el.classList.toggle('on', (id==='home'&&name==='home')||(id==='hist'&&name==='history')||(id==='set'&&name==='settings'));
+  });
+  if(name==='detect'){
+    nav.classList.add('dark'); stopBtn.classList.remove('hidden');
+  } else {
+    nav.classList.remove('dark'); stopBtn.classList.add('hidden');
+  }
+  curScr=name;
 }
 
-// ── Resize overlay to match rendered video ────────────────────────────────────
-function syncOverlaySize() {
-  overlay.width  = video.offsetWidth  || 960;
-  overlay.height = video.offsetHeight || 540;
-}
-
-// ── Start ─────────────────────────────────────────────────────────────────────
-btnStart.addEventListener('click', async () => {
-  btnStart.disabled = true;
-
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'environment' },
-      audio: false,
-    });
-    video.srcObject = stream;
-    await video.play();
-
-    videoWrap.classList.add('active');
-    syncOverlaySize();
-
-    // Keep overlay size in sync with layout changes
-    const ro = new ResizeObserver(syncOverlaySize);
-    ro.observe(video);
-
-    connectWS();
-
-    sendTimer   = setInterval(sendFrame, 1000 / SEND_FPS);
-    fpsInterval = setInterval(() => { displayFps = frameCount; frameCount = 0; }, 1000);
-
-    btnStop.disabled = false;
-  } catch (err) {
-    alert('Camera access denied or unavailable:\n' + err.message);
-    btnStart.disabled = false;
+// ─── Camera permission pre-check ────────────────────────────
+navigator.permissions&&navigator.permissions.query({name:'camera'}).then(r=>{
+  if(r.state==='granted'){
+    document.getElementById('chk-cam').textContent='✅';
+    document.getElementById('chk-sys').textContent='✅';
   }
 });
 
-// ── Stop ──────────────────────────────────────────────────────────────────────
-btnStop.addEventListener('click', () => {
+// ─── Start Detection ────────────────────────────────────────
+async function startDetection(){
+  const btn=document.getElementById('btn-start');
+  btn.textContent='⏳  Starting…'; btn.disabled=true;
+
+  try{
+    camStream=await navigator.mediaDevices.getUserMedia({
+      video:{width:{ideal:1280},height:{ideal:720},facingMode:'environment'},
+    });
+    video.srcObject=camStream;
+    document.getElementById('chk-cam').textContent='✅';
+    document.getElementById('chk-sys').textContent='✅';
+  } catch(e){
+    document.getElementById('chk-cam').textContent='❌';
+    alert('Camera access denied: '+e.message);
+    btn.textContent='▶  Start Detection'; btn.disabled=false; return;
+  }
+
+  ws=new WebSocket(cfg.wsUrl);
+  ws.binaryType='arraybuffer';
+  ws.onopen=()=>{
+    showScr('detect'); syncCanvas();
+    sendTimer=setInterval(sendFrame, 1000/cfg.fps);
+  };
+  ws.onmessage=evt=>{ try{ renderResult(JSON.parse(evt.data)); }catch(_){} };
+  ws.onerror=ws.onclose=()=>clearInterval(sendTimer);
+}
+
+// ─── Stop Detection ─────────────────────────────────────────
+function stopDetection(){
   clearInterval(sendTimer);
-  clearInterval(fpsInterval);
+  if(ws){ws.close();ws=null;}
+  if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
+  ctx.clearRect(0,0,overlay.width,overlay.height);
+  document.getElementById('chk-cam').textContent='⏳';
+  document.getElementById('chk-sys').textContent='⏳';
+  const btn=document.getElementById('btn-start');
+  btn.textContent='▶  Start Detection'; btn.disabled=false;
+  showScr('home');
+}
 
-  if (ws)     { ws.close(); ws = null; }
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+// ─── Canvas + capture ───────────────────────────────────────
+const video=document.getElementById('video');
+const overlay=document.getElementById('overlay');
+const ctx=overlay.getContext('2d');
+const cap=document.createElement('canvas');
+const capCtx=cap.getContext('2d');
 
-  video.srcObject = null;
-  videoWrap.classList.remove('active');
+function syncCanvas(){
+  overlay.width=overlay.clientWidth;
+  overlay.height=overlay.clientHeight;
+}
+new ResizeObserver(syncCanvas).observe(document.getElementById('scr-detect'));
 
-  overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-  riskBanner.textContent = 'Risk: —';
-  riskBanner.className   = '';
-  statsBar.textContent   = 'FPS: — | Detections: — | Score: —';
+function sendFrame(){
+  if(!ws||ws.readyState!==1||!video.videoWidth) return;
+  cap.width=video.videoWidth; cap.height=video.videoHeight;
+  capCtx.drawImage(video,0,0);
+  cap.toBlob(blob=>{
+    if(blob&&ws&&ws.readyState===1) blob.arrayBuffer().then(buf=>ws.send(buf));
+  },'image/jpeg',cfg.quality);
+}
 
-  btnStart.disabled = false;
-  btnStop.disabled  = true;
-});
+// ─── Render result ──────────────────────────────────────────
+function renderResult(data){
+  const boxes=data.boxes||[];
+  const risk=data.risk||{};
+  const label=(risk.label||'Low').toLowerCase();
+  const scoreInt=Math.round((risk.score||0)*100);
+
+  updateDash(label, scoreInt, boxes);
+  drawBoxes(boxes);
+  logEvent(label, scoreInt);
+  doVoice(label);
+}
+
+// ─── Dashboard update ───────────────────────────────────────
+function updateDash(label, sc, boxes){
+  // Banner
+  const banner=document.getElementById('r-banner');
+  const bTitle=document.getElementById('b-title');
+  const bSub=document.getElementById('b-sub');
+  const bIcon=document.getElementById('b-icon');
+  banner.className='r-banner '+label;
+  if(label==='high'){
+    bIcon.textContent='⚠️'; bTitle.textContent='Front Risk Warning';
+    bSub.textContent='Immediate hazard — slow down!';
+  } else if(label==='medium'){
+    bIcon.textContent='⚠️'; bTitle.textContent='Caution Required';
+    bSub.textContent='Potential hazard ahead — stay alert.';
+  } else {
+    bIcon.textContent='🛡️'; bTitle.textContent='Road Clear';
+    bSub.textContent='No significant hazards detected.';
+  }
+  // Risk card
+  const cap=label.charAt(0).toUpperCase()+label.slice(1);
+  document.getElementById('r-label').textContent=cap;
+  const sEl=document.getElementById('r-score');
+  sEl.textContent=sc; sEl.className='score-num '+label;
+  const fill=document.getElementById('r-fill');
+  fill.style.width=sc+'%';
+  fill.style.background=label==='high'?'var(--red)':label==='medium'?'var(--orange)':'var(--green)';
+  // Distance
+  const vehicles=boxes.filter(b=>['car','bus','truck'].includes(b.class_name));
+  const dEl=document.getElementById('dist-num');
+  const uEl=document.getElementById('dist-unit');
+  if(vehicles.length>0){
+    const front=vehicles.reduce((a,b)=>
+      (b.x2-b.x1)*(b.y2-b.y1)>(a.x2-a.x1)*(a.y2-a.y1)?b:a);
+    const fH=video.videoHeight||720;
+    const ratio=(front.y2-front.y1)/fH;
+    const dist=Math.min(99,Math.max(2,Math.round(1.8/ratio)));
+    dEl.textContent=dist; uEl.textContent='m';
+    dEl.style.color=dist<8?'var(--red)':dist<15?'var(--orange)':'var(--green)';
+  } else {
+    dEl.textContent='—'; uEl.textContent='m';
+    dEl.style.color='var(--green)';
+  }
+}
+
+// ─── Draw boxes ─────────────────────────────────────────────
+function drawBoxes(boxes){
+  ctx.clearRect(0,0,overlay.width,overlay.height);
+  if(!video.videoWidth) return;
+  const sx=overlay.width/video.videoWidth;
+  const sy=overlay.height/video.videoHeight;
+  boxes.forEach(b=>{
+    const x=b.x1*sx, y=b.y1*sy;
+    const w=(b.x2-b.x1)*sx, h=(b.y2-b.y1)*sy;
+    const col=CLS_COLOR[b.class_name]||'#94a3b8';
+    const conf=b.confidence!=null?(b.confidence*100).toFixed(0)+'%':'';
+    const txt=(b.class_name||'')+(conf?' '+conf:'');
+    // Box
+    ctx.strokeStyle=col; ctx.lineWidth=2.5;
+    ctx.strokeRect(x,y,w,h);
+    // Label
+    ctx.font='bold 11px -apple-system,sans-serif';
+    const tw=ctx.measureText(txt).width+12;
+    ctx.fillStyle=col;
+    roundRect(ctx, x-1, y-18, tw, 18, 4);
+    ctx.fill();
+    ctx.fillStyle='#fff';
+    ctx.fillText(txt, x+5, y-5);
+  });
+}
+
+function roundRect(c,x,y,w,h,r){
+  c.beginPath();
+  c.moveTo(x+r,y); c.lineTo(x+w-r,y);
+  c.arcTo(x+w,y,x+w,y+r,r);
+  c.lineTo(x+w,y+h-r); c.arcTo(x+w,y+h,x+w-r,y+h,r);
+  c.lineTo(x+r,y+h); c.arcTo(x,y+h,x,y+h-r,r);
+  c.lineTo(x,y+r); c.arcTo(x,y,x+r,y,r);
+  c.closePath();
+}
+
+// ─── History ────────────────────────────────────────────────
+let lastEvtLabel=null, lastEvtTime=0;
+function logEvent(label,score){
+  const now=Date.now();
+  if(label===lastEvtLabel&&now-lastEvtTime<5000) return;
+  if(label==='low'&&lastEvtLabel==='low') return;
+  lastEvtLabel=label; lastEvtTime=now;
+  histEvents.unshift({label,score,time:new Date()});
+  if(histEvents.length>60) histEvents.pop();
+  renderHistory();
+}
+function renderHistory(){
+  const list=document.getElementById('hist-list');
+  if(!histEvents.length){
+    list.innerHTML='<div class="h-empty"><span class="ico">📋</span>No events recorded yet.<br>Start a session to log risk events.</div>';
+    return;
+  }
+  const COL={low:'var(--green)',medium:'var(--orange)',high:'var(--red)'};
+  list.innerHTML=histEvents.map(e=>{
+    const col=COL[e.label]||'var(--muted)';
+    const cap=e.label.charAt(0).toUpperCase()+e.label.slice(1);
+    const t=e.time.toLocaleTimeString();
+    return `<div class="ev-card">
+      <div class="ev-dot" style="background:${col}"></div>
+      <div style="flex:1"><div class="ev-lbl">${cap} Risk Event</div><div class="ev-time">${t}</div></div>
+      <div class="ev-score" style="color:${col}">${e.score}</div>
+    </div>`;
+  }).join('');
+}
+
+// ─── Voice alerts ────────────────────────────────────────────
+function doVoice(label){
+  if(!cfg.voiceOn) return;
+  const thresh=cfg.alertThresh;
+  const shouldAlert=thresh==='high'?label==='high':label!=='low';
+  if(!shouldAlert){lastSpokenLabel=null;return;}
+  if(label===lastSpokenLabel) return;
+  lastSpokenLabel=label;
+  const msg=label==='high'
+    ?'High risk warning. Slow down immediately.'
+    :'Caution. Medium risk detected ahead.';
+  const u=new SpeechSynthesisUtterance(msg);
+  u.rate=1.05; speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+function toggleVoice(btn){
+  cfg.voiceOn=!cfg.voiceOn;
+  btn.classList.toggle('on',cfg.voiceOn);
+  document.getElementById('voice-pill').classList.toggle('muted',!cfg.voiceOn);
+  document.getElementById('chk-voice').textContent=cfg.voiceOn?'✅':'🔇';
+}
 </script>
 </body>
 </html>
