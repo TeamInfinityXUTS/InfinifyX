@@ -3,11 +3,11 @@ from clearml import OutputModel, PipelineDecorator, Task
 
 PROJECT_NAME = "MLOps_Product_Assisted_Driving"
 DEFAULT_GRAPH_CACHE = "graph_cache.pt"
-DEFAULT_GRAPH_CACHE_TASK_ID = "ac6691e3ce1b4124ae670ba8c84e331d"
+DEFAULT_GRAPH_CACHE_TASK_ID = ""   # Set via parameter — no hardcoded fallback
 DEFAULT_GRAPH_CACHE_ARTIFACT_NAME = "graph_cache"
 
 
-@PipelineDecorator.component(execution_queue="Yolov8_training_v0.1")
+@PipelineDecorator.component(execution_queue="data_engineer")
 def gnn_train_step(
     graph_cache,
     graph_cache_model_id=None,
@@ -181,7 +181,7 @@ def gnn_train_step(
     return model_path
 
 
-@PipelineDecorator.component(execution_queue="Yolov8_training_v0.1")
+@PipelineDecorator.component(execution_queue="data_engineer")
 def gnn_evaluation_step(
     graph_cache,
     model_path,
@@ -371,7 +371,7 @@ def gnn_evaluation_step(
     }
 
 
-@PipelineDecorator.component(execution_queue="Yolov8_training_v0.1")
+@PipelineDecorator.component(execution_queue="data_engineer")
 def register_gnn_model_step(model_path, metrics):
     from clearml import OutputModel, Task
 
@@ -434,7 +434,7 @@ def gnn_training_evaluation_from_clearml_model_pipeline(
     project=PROJECT_NAME,
 )
 def gnn_training_evaluation_from_clearml_artifact_pipeline(
-    graph_cache_task_id=DEFAULT_GRAPH_CACHE_TASK_ID,
+    graph_cache_task_id="",
     graph_cache_artifact_name=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
     graph_cache=DEFAULT_GRAPH_CACHE,
 ):
@@ -454,8 +454,10 @@ def gnn_training_evaluation_from_clearml_artifact_pipeline(
 
 if __name__ == "__main__":
     PipelineDecorator.run_locally()
-    result = gnn_training_evaluation_from_clearml_artifact_pipeline(
-        graph_cache_task_id=DEFAULT_GRAPH_CACHE_TASK_ID,
-        graph_cache_artifact_name=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
+    # Use local graph_cache.pt by default instead of hardcoded ClearML task ID
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    local_cache = os.path.join(project_root, 'models', 'gnn', 'graph_cache.pt')
+    result = gnn_training_evaluation_pipeline(
+        graph_cache=local_cache if os.path.exists(local_cache) else DEFAULT_GRAPH_CACHE,
     )
     print("Final GNN result:", result)

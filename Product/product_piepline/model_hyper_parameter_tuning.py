@@ -11,12 +11,12 @@ from clearml.automation.optuna import OptimizerOptuna
 PROJECT_NAME = "MLOps_Product_Assisted_Driving"
 BASE_TASK_NAME = "GNN_Hyper_Parameter_Tuning_Base"
 OPTIMIZER_TASK_NAME = "GNN_Hyper_Parameter_Tuning_Controller"
-EXECUTION_QUEUE = "Yolov8_training_v0.1"
+EXECUTION_QUEUE = "data_engineer"
 RUN_MODE_CONTROLLER = "controller"
 RUN_MODE_TRIAL = "trial"
 
 DEFAULT_GRAPH_CACHE = "graph_cache.pt"
-DEFAULT_GRAPH_CACHE_TASK_ID = "ac6691e3ce1b4124ae670ba8c84e331d"
+DEFAULT_GRAPH_CACHE_TASK_ID = ""
 DEFAULT_GRAPH_CACHE_ARTIFACT_NAME = "graph_cache"
 
 MAX_CONCURRENT_TASKS = 2
@@ -751,7 +751,7 @@ def run_hyperparameter_optimization(base_task_id):
 def run_gnn_hyper_parameter_tuning(
     graph_cache=DEFAULT_GRAPH_CACHE,
     graph_cache_model_id=None,
-    graph_cache_task_id=DEFAULT_GRAPH_CACHE_TASK_ID,
+    graph_cache_task_id="",
     graph_cache_artifact_name=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
 ):
     base_task_id = train_evaluate_single_task(

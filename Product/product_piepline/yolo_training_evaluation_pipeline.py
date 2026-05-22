@@ -12,9 +12,7 @@ PROJECT_NAME = "MLOps_Product_Assisted_Driving"
 DEFAULT_DATASET_PROJECT = "InfinifyX"
 DEFAULT_DATASET_NAME = "bdd100k"
 DEFAULT_TARGET_FOLDER = "data"
-DEFAULT_WEIGHT = (
-    "Model/Yolo_best.pt"
-)
+DEFAULT_WEIGHT = "models/yolo/Yolov8_best.pt"
 DEFAULT_IMAGE_SIZE = 640
 DEFAULT_BATCH_SIZE = 4
 
@@ -36,7 +34,7 @@ def validate_file(path, label):
     return path
 
 
-@PipelineDecorator.component(cache=False)
+@PipelineDecorator.component(cache=False, execution_queue="data_engineer")
 def dataset_step(project, name, target_folder="data"):
     import os
     import uuid
@@ -64,7 +62,7 @@ def dataset_step(project, name, target_folder="data"):
     return yaml_path
 
 
-@PipelineDecorator.component(cache=False)
+@PipelineDecorator.component(cache=False, execution_queue="data_engineer")
 def dataset_yaml_step(yaml_path):
     import os
     from clearml import Task
@@ -84,7 +82,7 @@ def dataset_yaml_step(yaml_path):
     return yaml_path
 
 
-@PipelineDecorator.component(execution_queue="Yolov8_training_v0.1")
+@PipelineDecorator.component(execution_queue="data_engineer")
 def yolo_train_step(yaml_path, weight):
     import os
     from clearml import Task
@@ -107,10 +105,6 @@ def yolo_train_step(yaml_path, weight):
         task_name="YOLO_Train_v8_CBAM_SE"
     )
 
-    weight = (
-         "Model/Yolo_best.pt"
-    )
-
     trainer = YOLOTrainer(weight=weight)
     run_dir = trainer.train(
         yaml_path,
@@ -128,7 +122,7 @@ def yolo_train_step(yaml_path, weight):
     return best_model_path
 
 
-@PipelineDecorator.component(execution_queue="Yolov8_training_v0.1")
+@PipelineDecorator.component(execution_queue="data_engineer")
 def yolo_evaluation_step(
     yaml_path,
     model_path,
@@ -262,7 +256,7 @@ def yolo_training_evaluation_pipeline(
     dataset_project="InfinifyX",
     dataset_name="bdd100k",
     target_folder="data",
-    weight="Model/Yolo_best.pt",
+    weight=DEFAULT_WEIGHT,
     yaml_path=None,
     imgsz=960,
     batch=16

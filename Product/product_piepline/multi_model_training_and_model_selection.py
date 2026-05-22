@@ -2,10 +2,10 @@ from clearml import PipelineDecorator, Task
 
 
 PROJECT_NAME = "MLOps_Product_Assisted_Driving"
-EXECUTION_QUEUE = "Yolov8_training_v0.1"
+EXECUTION_QUEUE = "data_engineer"
 
 DEFAULT_GRAPH_CACHE = "graph_cache.pt"
-DEFAULT_GRAPH_CACHE_TASK_ID = "ac6691e3ce1b4124ae670ba8c84e331d"
+DEFAULT_GRAPH_CACHE_TASK_ID = ""
 DEFAULT_GRAPH_CACHE_ARTIFACT_NAME = "graph_cache"
 
 
@@ -50,7 +50,7 @@ GNN_MODEL_CONFIGS = [
 ]
 
 
-@PipelineDecorator.component(execution_queue="Yolov8_training_v0.1")
+@PipelineDecorator.component(execution_queue="data_engineer")
 def train_evaluate_register_single_model(
     config,
     graph_cache=None,
@@ -89,10 +89,7 @@ def train_evaluate_register_single_model(
     )
     config = task.connect(config, name="ModelConfig")
     graph_cache = graph_cache or "graph_cache.pt"
-    graph_cache_task_id = (
-        graph_cache_task_id
-        or "ac6691e3ce1b4124ae670ba8c84e331d"
-    )
+    graph_cache_task_id = graph_cache_task_id or ""
     graph_cache_artifact_name = graph_cache_artifact_name or "graph_cache"
 
     def validate_file(path, label):
@@ -406,7 +403,7 @@ def train_evaluate_register_single_model(
     }
 
 
-@PipelineDecorator.component()
+@PipelineDecorator.component(execution_queue="data_engineer")
 def select_best_model(results, score_key="score"):
     from clearml import Task
 
@@ -445,7 +442,7 @@ def select_best_model(results, score_key="score"):
 def gnn_multi_model_training_selection_pipeline(
     graph_cache="graph_cache.pt",
     graph_cache_model_id=None,
-    graph_cache_task_id="ac6691e3ce1b4124ae670ba8c84e331d",
+    graph_cache_task_id="",
     graph_cache_artifact_name="graph_cache",
 ):
     results = []
