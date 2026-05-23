@@ -2,152 +2,190 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="viewport" content="width=1280,initial-scale=1"/>
 <title>Smart Drive · Road Guardian</title>
 <style>
 /* ── Variables ────────────────────────────────────── */
 :root{
-  --navy:#0d1b3e; --navy2:#1a2f5e;
+  --navy:#0d1b3e; --navy2:#1a2f5e; --navy3:#0a1530;
   --blue:#2563eb; --blue2:#3b82f6;
   --green:#22c55e; --orange:#f97316; --red:#ef4444;
-  --bg:#eef2ff; --white:#fff;
+  --bg:#eef2ff; --panel:#ffffff;
   --text:#1e293b; --muted:#64748b;
-  --r:16px; --nav:68px; --hdr:54px;
+  --r:14px; --hdr:60px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{width:100%;height:100%;background:#c7d2fe;
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  display:flex;justify-content:center;align-items:flex-start}
+html,body{width:100%;height:100%;background:#0a1530;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  color:var(--text);overflow:hidden}
 
-/* ── App Shell ─────────────────────────────────────── */
-.shell{width:100%;max-width:420px;min-height:100svh;
-  background:var(--bg);display:flex;flex-direction:column;
-  position:relative;overflow:hidden;
-  box-shadow:0 0 60px rgba(0,0,0,.25)}
+/* ── Top Header ────────────────────────────────────── */
+.hdr{height:var(--hdr);background:linear-gradient(90deg,var(--navy) 0%,var(--navy2) 100%);
+  color:#fff;display:flex;align-items:center;padding:0 24px;
+  border-bottom:1px solid #1f2c52;box-shadow:0 2px 8px rgba(0,0,0,.2);
+  flex-shrink:0;z-index:10}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;letter-spacing:.3px}
+.brand-logo{width:30px;height:30px;background:var(--blue);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;font-size:16px}
+.brand small{font-weight:500;opacity:.65;font-size:11px;margin-left:4px;letter-spacing:.5px}
 
-/* ── Header ────────────────────────────────────────── */
-.hdr{height:var(--hdr);background:var(--navy);color:#fff;
-  display:flex;justify-content:center;align-items:center;
-  font-size:17px;font-weight:700;letter-spacing:.2px;flex-shrink:0}
+.top-nav{margin-left:auto;display:flex;gap:6px;align-items:center}
+.tnbtn{background:transparent;border:none;color:rgba(255,255,255,.7);
+  padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;
+  border-radius:8px;display:flex;align-items:center;gap:6px;transition:all .15s}
+.tnbtn:hover{background:rgba(255,255,255,.08);color:#fff}
+.tnbtn.on{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.4)}
+.tnbtn-stop{background:var(--red);color:#fff;padding:8px 18px}
+.tnbtn-stop:hover{background:#dc2626}
+.tnbtn-stop.hidden{display:none}
 
-/* ── Screens ───────────────────────────────────────── */
-.scr{flex:1;overflow-y:auto;padding-bottom:var(--nav)}
+/* ── App Body ──────────────────────────────────────── */
+.app{flex:1;display:flex;height:calc(100vh - var(--hdr));overflow:hidden;background:var(--bg)}
+.scr{width:100%;height:100%;overflow-y:auto}
 .scr.hidden{display:none}
 
 /* ══ HOME ══════════════════════════════════════════════ */
-.hero{background:linear-gradient(155deg,var(--navy) 0%,var(--navy2) 100%);
-  padding:28px 20px 44px;display:flex;flex-direction:column;
-  align-items:center;gap:6px}
-.hero svg{width:190px;height:130px}
-.hero-title{color:#fff;font-size:24px;font-weight:800;margin-top:6px}
-.hero-sub{color:rgba(255,255,255,.6);font-size:13px}
+#scr-home{padding:36px 48px;background:linear-gradient(135deg,#eef2ff 0%,#dbeafe 100%)}
+.home-grid{max-width:1200px;margin:0 auto;display:grid;
+  grid-template-columns:1.1fr .9fr;gap:32px;align-items:stretch}
 
-.status-panel{margin:-22px 14px 0;background:var(--white);
-  border-radius:var(--r);box-shadow:0 4px 20px rgba(0,0,0,.1);overflow:hidden}
-.s-item{display:flex;align-items:center;gap:12px;padding:14px 16px;
+.hero{background:linear-gradient(155deg,var(--navy) 0%,var(--navy2) 100%);
+  border-radius:20px;padding:40px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;color:#fff;
+  box-shadow:0 12px 40px rgba(13,27,62,.25);min-height:420px}
+.hero svg{width:280px;height:200px}
+.hero-title{font-size:32px;font-weight:800;margin-top:16px}
+.hero-sub{color:rgba(255,255,255,.7);font-size:14px;margin-top:6px;text-align:center}
+
+.home-side{display:flex;flex-direction:column;gap:18px}
+.status-panel{background:var(--panel);border-radius:16px;
+  box-shadow:0 6px 24px rgba(0,0,0,.08);overflow:hidden}
+.status-head{padding:14px 20px;background:#f8fafc;border-bottom:1px solid #e2e8f0;
+  font-weight:700;font-size:14px;color:var(--text)}
+.s-item{display:flex;align-items:center;gap:14px;padding:16px 20px;
   border-bottom:1px solid #f1f5f9;font-size:14px;color:var(--text)}
 .s-item:last-child{border-bottom:none}
-.s-icon{font-size:19px;width:30px;text-align:center}
+.s-icon{font-size:20px;width:30px;text-align:center}
 .s-check{margin-left:auto;font-size:18px}
 
-.home-btns{padding:18px 14px;display:flex;flex-direction:column;gap:10px}
-.btn-start{width:100%;padding:17px;background:var(--blue);color:#fff;
+.start-card{background:var(--panel);border-radius:16px;padding:24px;
+  box-shadow:0 6px 24px rgba(0,0,0,.08)}
+.btn-start{width:100%;padding:18px;background:var(--blue);color:#fff;
   font-size:16px;font-weight:700;border:none;border-radius:50px;cursor:pointer;
   box-shadow:0 6px 20px rgba(37,99,235,.4);transition:transform .1s}
 .btn-start:active{transform:scale(.98)}
 .btn-start:disabled{opacity:.6;cursor:not-allowed}
-.start-hint{text-align:center;color:var(--muted);font-size:12px;line-height:1.5}
-.btn-tut{width:100%;padding:13px;background:transparent;color:var(--blue);
+.start-hint{text-align:center;color:var(--muted);font-size:12px;line-height:1.5;margin-top:12px}
+.btn-tut{width:100%;margin-top:14px;padding:13px;background:transparent;color:var(--blue);
   font-size:14px;font-weight:600;border:2px solid var(--blue);
   border-radius:50px;cursor:pointer}
 
-/* ══ DETECT ════════════════════════════════════════════ */
-#scr-detect{background:#08101e;padding:0;display:flex;flex-direction:column}
+/* ══ DETECT (widescreen) ═════════════════════════════ */
+#scr-detect{background:#08101e;padding:0;display:flex;flex-direction:row;height:100%}
 #scr-detect.hidden{display:none}
 
-.r-banner{display:flex;align-items:center;gap:10px;padding:11px 14px;
-  background:var(--green);color:#fff;flex-shrink:0;transition:background .3s}
-.r-banner.medium{background:var(--orange)}
-.r-banner.high{background:var(--red)}
-.r-banner-icon{font-size:20px}
-.r-banner-txt{flex:1}
-.r-banner-txt strong{display:block;font-size:14px;font-weight:700}
-.r-banner-txt small{font-size:11px;opacity:.9}
-
-.info-row{display:flex;gap:8px;padding:8px 10px;flex-shrink:0}
-.icard{flex:1;border-radius:12px;padding:10px 12px;background:#111827}
-.icard-lbl{color:rgba(255,255,255,.55);font-size:10px;margin-bottom:3px}
-.icard-val{font-size:14px;font-weight:700;color:#fff}
-.score-num{font-size:34px;font-weight:900;line-height:1;margin:2px 0}
-.score-num.low{color:var(--green)}.score-num.medium{color:var(--orange)}.score-num.high{color:var(--red)}
-.rbar{height:4px;background:#1e293b;border-radius:2px;margin-top:5px}
-.rfill{height:100%;border-radius:2px;background:var(--green);transition:width .4s,background .4s}
-.dist-num{font-size:30px;font-weight:900;color:var(--green);line-height:1;margin-top:4px}
-.dist-unit{color:rgba(255,255,255,.5);font-size:11px}
-
-.cam-wrap{position:relative;flex:1;min-height:0;background:#000;overflow:hidden}
-#video{width:100%;height:100%;object-fit:cover;display:block}
+.cam-col{flex:1;min-width:0;display:flex;flex-direction:column;background:#000;position:relative}
+.cam-wrap{flex:1;min-height:0;position:relative;background:#000;overflow:hidden}
+#video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
 #overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
 
-.voice-pill{display:flex;align-items:center;justify-content:center;gap:8px;
-  margin:7px 14px;padding:9px 18px;background:rgba(255,255,255,.1);
-  border-radius:50px;color:#fff;font-size:13px;flex-shrink:0}
-.voice-pill.muted{opacity:.35}
+.cam-foot{padding:10px 16px;background:rgba(0,0,0,.6);color:#fff;
+  font-size:12px;display:flex;align-items:center;gap:14px;border-top:1px solid #1f2937}
+.cam-foot .stat{display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.72)}
+.cam-foot .stat b{color:#fff;font-weight:700}
+.cam-foot .live-dot{width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse 1.2s infinite}
+
+.side-col{width:380px;flex-shrink:0;background:#0d1b3e;color:#fff;
+  display:flex;flex-direction:column;overflow-y:auto;border-left:1px solid #1f2c52}
+
+.r-banner{display:flex;align-items:center;gap:12px;padding:18px 20px;
+  background:var(--green);color:#fff;transition:background .3s;flex-shrink:0}
+.r-banner.medium{background:var(--orange)}
+.r-banner.high{background:var(--red)}
+.r-banner-icon{font-size:26px}
+.r-banner-txt{flex:1}
+.r-banner-txt strong{display:block;font-size:16px;font-weight:800}
+.r-banner-txt small{font-size:12px;opacity:.92}
+
+.side-section{padding:18px 20px;border-bottom:1px solid #1f2c52}
+.sec-h{font-size:11px;font-weight:700;color:rgba(255,255,255,.5);
+  text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.icard{background:#111827;border-radius:12px;padding:12px 14px}
+.icard-lbl{color:rgba(255,255,255,.55);font-size:10px;margin-bottom:4px;font-weight:600;letter-spacing:.3px}
+.icard-val{font-size:14px;font-weight:700;color:#fff}
+.score-num{font-size:38px;font-weight:900;line-height:1;margin:4px 0}
+.score-num.low{color:var(--green)}.score-num.medium{color:var(--orange)}.score-num.high{color:var(--red)}
+.rbar{height:5px;background:#1e293b;border-radius:3px;margin-top:8px;overflow:hidden}
+.rfill{height:100%;border-radius:3px;background:var(--green);transition:width .4s,background .4s}
+.dist-num{font-size:34px;font-weight:900;color:var(--green);line-height:1;margin-top:4px}
+.dist-unit{color:rgba(255,255,255,.5);font-size:11px}
+
+.det-list{max-height:240px;overflow-y:auto}
+.det-empty{font-size:12px;color:rgba(255,255,255,.4);padding:10px 0;text-align:center}
+.det-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;
+  background:rgba(255,255,255,.04);margin-bottom:5px;font-size:12px}
+.det-swatch{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.det-name{font-weight:700;color:#fff;text-transform:capitalize}
+.det-conf{margin-left:auto;font-size:11px;color:rgba(255,255,255,.6);font-weight:600}
+
+.legend-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.lg{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.06);
+  padding:4px 8px;border-radius:6px;font-size:10.5px;color:rgba(255,255,255,.85)}
+.lg-sw{width:9px;height:9px;border-radius:2px}
+
+.voice-pill{display:flex;align-items:center;justify-content:center;gap:10px;
+  margin:14px 16px;padding:10px 14px 10px 18px;background:rgba(255,255,255,.08);
+  border-radius:50px;color:#fff;font-size:13px}
+.voice-pill.muted{opacity:.55}
+.voice-pill .vlabel{flex:1;display:flex;align-items:center;gap:8px}
+.vbtn{background:var(--blue);color:#fff;border:none;border-radius:50px;
+  padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;gap:6px;transition:background .15s}
+.vbtn:hover{background:var(--blue2)}
+.vbtn.stopped{background:var(--red)}
+.vbtn.stopped:hover{background:#dc2626}
 .pulse{animation:pulse 1.2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
 
-/* ══ BOTTOM NAV ════════════════════════════════════════ */
-.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);
-  width:100%;max-width:420px;height:var(--nav);background:var(--white);
-  display:flex;align-items:center;border-top:1px solid #e2e8f0;z-index:200}
-.nav.dark{background:#0d1b3e;border-color:#1a2f5e}
-.nbtn{flex:1;border:none;background:none;display:flex;flex-direction:column;
-  align-items:center;gap:2px;font-size:20px;cursor:pointer;
-  color:var(--muted);padding:8px 0}
-.nbtn span{font-size:9px;font-weight:700;letter-spacing:.3px}
-.nbtn.on{color:var(--blue)}
-.nav.dark .nbtn{color:rgba(255,255,255,.45)}
-.nav.dark .nbtn.on{color:var(--blue2)}
-.stop-btn{width:58px;height:58px;margin-top:-16px;background:var(--red);
-  border-radius:50%;border:4px solid #fff;display:flex;align-items:center;
-  justify-content:center;font-size:22px;cursor:pointer;flex-shrink:0;
-  box-shadow:0 4px 14px rgba(239,68,68,.5)}
-.stop-btn.hidden{display:none}
-
 /* ══ TUTORIAL ══════════════════════════════════════════ */
-#scr-tutorial{background:var(--white);padding:16px}
-.tut-hdr{text-align:center;padding:14px 0 20px}
-.tut-hdr h2{font-size:20px;font-weight:800;color:var(--text)}
-.tut-hdr p{color:var(--muted);font-size:13px;margin-top:3px}
-.tstep{display:flex;gap:14px;padding:14px;margin-bottom:10px;
-  background:var(--bg);border-radius:var(--r)}
+#scr-tutorial{background:var(--bg);padding:36px 48px}
+.tut-wrap{max-width:1100px;margin:0 auto}
+.tut-hdr{text-align:center;padding:0 0 28px}
+.tut-hdr h2{font-size:28px;font-weight:800;color:var(--text)}
+.tut-hdr p{color:var(--muted);font-size:14px;margin-top:6px}
+.tut-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.tstep{display:flex;gap:14px;padding:18px;background:var(--panel);border-radius:14px;
+  box-shadow:0 4px 16px rgba(0,0,0,.06)}
 .snum{width:34px;height:34px;flex-shrink:0;background:var(--blue);color:#fff;
   border-radius:50%;display:flex;align-items:center;justify-content:center;
   font-weight:800;font-size:15px}
-.stxt h3{font-size:14px;font-weight:700;color:var(--text);margin-bottom:3px}
-.stxt p{font-size:12px;color:var(--muted);line-height:1.55}
-.legend-box{margin:16px 0 8px}
-.legend-box h3{font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px}
-.l-item{display:flex;align-items:center;gap:10px;padding:10px 13px;
-  border-radius:10px;margin-bottom:7px;font-size:13px}
+.stxt h3{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px}
+.stxt p{font-size:12px;color:var(--muted);line-height:1.6}
+.legend-box{margin:28px 0 8px}
+.legend-box h3{font-size:16px;font-weight:700;color:var(--text);margin-bottom:14px}
+.l-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.l-item{display:flex;align-items:center;gap:12px;padding:14px 18px;
+  border-radius:12px;font-size:13px}
 .l-item.low{background:#dcfce7}.l-item.med{background:#fff7ed}.l-item.hi{background:#fee2e2}
-.ldot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.ldot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
 .ldot.low{background:var(--green)}.ldot.med{background:var(--orange)}.ldot.hi{background:var(--red)}
 
 /* ══ SETTINGS ══════════════════════════════════════════ */
-#scr-settings{background:#f8fafc;padding:14px}
+#scr-settings{background:var(--bg);padding:36px 48px}
+.set-wrap{max-width:760px;margin:0 auto}
 .sec-title{font-size:11px;font-weight:700;color:var(--muted);
-  text-transform:uppercase;letter-spacing:.5px;margin:16px 0 6px 4px}
-.sec-card{background:var(--white);border-radius:var(--r);overflow:hidden;
-  box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  text-transform:uppercase;letter-spacing:.5px;margin:20px 0 8px 4px}
+.sec-card{background:var(--panel);border-radius:14px;overflow:hidden;
+  box-shadow:0 4px 16px rgba(0,0,0,.06)}
 .set-row{display:flex;align-items:center;justify-content:space-between;
-  padding:13px 15px;border-bottom:1px solid #f1f5f9}
+  padding:16px 20px;border-bottom:1px solid #f1f5f9}
 .set-row:last-child{border-bottom:none}
-.set-lbl{font-size:14px;color:var(--text)}
-.set-sub{font-size:11px;color:var(--muted);margin-top:1px}
+.set-lbl{font-size:14px;color:var(--text);font-weight:600}
+.set-sub{font-size:12px;color:var(--muted);margin-top:2px}
 .set-row select,.set-row input[type=text]{
-  border:1px solid #e2e8f0;border-radius:8px;padding:5px 8px;
-  font-size:12px;color:var(--text);background:#fff}
+  border:1px solid #e2e8f0;border-radius:8px;padding:7px 10px;
+  font-size:13px;color:var(--text);background:#fff;min-width:160px}
 .tog{width:48px;height:27px;border-radius:14px;background:#e2e8f0;
   position:relative;cursor:pointer;border:none;transition:background .2s}
 .tog.on{background:var(--blue)}
@@ -156,206 +194,256 @@ html,body{width:100%;height:100%;background:#c7d2fe;
   transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .tog.on::after{transform:translateX(21px)}
 .save-btn{background:var(--blue);color:#fff;border:none;
-  padding:7px 18px;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px}
-.full-row{flex-direction:column;align-items:flex-start;gap:7px}
-.full-row input{width:100%;padding:8px 11px;border:1px solid #e2e8f0;
+  padding:8px 22px;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px}
+.full-row{flex-direction:column;align-items:flex-start;gap:8px}
+.full-row input{width:100%;padding:10px 12px;border:1px solid #e2e8f0;
   border-radius:8px;font-size:13px}
+.set-head{text-align:center;padding:0 0 12px}
+.set-head h2{font-size:24px;font-weight:800;color:var(--text)}
+.set-head .ico{font-size:30px}
 
 /* ══ HISTORY ═══════════════════════════════════════════ */
-#scr-history{background:#f8fafc;padding:14px}
-.h-hdr{text-align:center;padding:14px 0 16px}
-.h-hdr h2{font-size:20px;font-weight:800;color:var(--text)}
-.h-empty{text-align:center;padding:50px 0;color:var(--muted)}
-.h-empty .ico{font-size:44px;display:block;margin-bottom:10px}
-.ev-card{background:var(--white);border-radius:12px;padding:11px 15px;
-  margin-bottom:9px;display:flex;align-items:center;gap:12px;
-  box-shadow:0 1px 4px rgba(0,0,0,.06)}
-.ev-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.ev-lbl{font-size:13px;font-weight:600;color:var(--text)}
-.ev-time{font-size:11px;color:var(--muted);margin-top:1px}
-.ev-score{font-weight:800;font-size:15px;margin-left:auto}
+#scr-history{background:var(--bg);padding:36px 48px}
+.hist-wrap{max-width:980px;margin:0 auto}
+.h-hdr{text-align:center;padding:0 0 22px}
+.h-hdr h2{font-size:24px;font-weight:800;color:var(--text)}
+.h-empty{text-align:center;padding:80px 0;color:var(--muted)}
+.h-empty .ico{font-size:54px;display:block;margin-bottom:14px}
+.ev-card{background:var(--panel);border-radius:12px;padding:14px 18px;
+  margin-bottom:10px;display:flex;align-items:center;gap:14px;
+  box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.ev-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.ev-lbl{font-size:14px;font-weight:700;color:var(--text)}
+.ev-time{font-size:12px;color:var(--muted);margin-top:2px}
+.ev-score{font-weight:800;font-size:18px;margin-left:auto}
+
+/* Scrollbar polish */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+.side-col ::-webkit-scrollbar-thumb{background:#334155}
 </style>
 </head>
 <body>
-<div class="shell">
 
-  <!-- Header -->
-  <header class="hdr">Smart Drive · Road Guardian</header>
+<!-- Top Header (always visible) -->
+<header class="hdr">
+  <div class="brand">
+    <div class="brand-logo">🛡</div>
+    Smart Drive
+    <small>· Road Guardian</small>
+  </div>
+  <nav class="top-nav">
+    <button class="tnbtn on" id="nb-home" onclick="showScr('home')">🏠 Home</button>
+    <button class="tnbtn" id="nb-tut"  onclick="showScr('tutorial')">📖 Tutorial</button>
+    <button class="tnbtn" id="nb-hist" onclick="showScr('history')">🕐 History</button>
+    <button class="tnbtn" id="nb-set"  onclick="showScr('settings')">⚙ Settings</button>
+    <button class="tnbtn tnbtn-stop hidden" id="nb-stop" onclick="stopDetection()">⏹ Stop</button>
+  </nav>
+</header>
+
+<div class="app">
 
   <!-- ══ HOME ══ -->
   <div class="scr" id="scr-home">
-    <div class="hero">
-      <!-- Inline SVG: road + car + shield -->
-      <svg viewBox="0 0 200 130" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- Road -->
-        <rect x="55" y="88" width="90" height="42" rx="2" fill="#1e293b"/>
-        <rect x="96" y="91" width="8" height="13" rx="2" fill="white" opacity=".5"/>
-        <rect x="96" y="112" width="8" height="12" rx="2" fill="white" opacity=".5"/>
-        <!-- Car body -->
-        <rect x="68" y="66" width="64" height="28" rx="9" fill="#60a5fa"/>
-        <!-- Roof -->
-        <rect x="77" y="53" width="44" height="18" rx="7" fill="#93c5fd"/>
-        <!-- Windows -->
-        <rect x="80" y="55" width="16" height="12" rx="3" fill="#1e3a8a" opacity=".8"/>
-        <rect x="101" y="55" width="16" height="12" rx="3" fill="#1e3a8a" opacity=".8"/>
-        <!-- Wheels -->
-        <circle cx="82" cy="96" r="8" fill="#0f172a"/>
-        <circle cx="82" cy="96" r="3" fill="#475569"/>
-        <circle cx="118" cy="96" r="8" fill="#0f172a"/>
-        <circle cx="118" cy="96" r="3" fill="#475569"/>
-        <!-- Lights -->
-        <rect x="68" y="71" width="9" height="5" rx="2" fill="#fbbf24"/>
-        <rect x="123" y="71" width="9" height="5" rx="2" fill="#fbbf24"/>
-        <!-- Shield -->
-        <path d="M158 14 L178 22 L178 44 Q178 60 158 70 Q138 60 138 44 L138 22 Z" fill="#1d4ed8" opacity=".95"/>
-        <path d="M158 20 L173 27 L173 44 Q173 57 158 65 Q143 57 143 44 L143 27 Z" fill="#3b82f6"/>
-        <!-- Checkmark -->
-        <path d="M151 44 L156 51 L167 37" stroke="white" stroke-width="3"
-          stroke-linecap="round" stroke-linejoin="round"/>
-        <!-- Glow rings -->
-        <circle cx="158" cy="43" r="22" stroke="#60a5fa" stroke-width="1.5"
-          stroke-dasharray="4 4" opacity=".45"/>
-        <circle cx="158" cy="43" r="30" stroke="#60a5fa" stroke-width="1"
-          stroke-dasharray="3 6" opacity=".25"/>
-      </svg>
-      <h2 class="hero-title">Welcome Back</h2>
-      <p class="hero-sub">Urban Road Assisted Driving System</p>
-    </div>
+    <div class="home-grid">
+      <div class="hero">
+        <svg viewBox="0 0 200 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="55" y="88" width="90" height="42" rx="2" fill="#1e293b"/>
+          <rect x="96" y="91" width="8" height="13" rx="2" fill="white" opacity=".5"/>
+          <rect x="96" y="112" width="8" height="12" rx="2" fill="white" opacity=".5"/>
+          <rect x="68" y="66" width="64" height="28" rx="9" fill="#60a5fa"/>
+          <rect x="77" y="53" width="44" height="18" rx="7" fill="#93c5fd"/>
+          <rect x="80" y="55" width="16" height="12" rx="3" fill="#1e3a8a" opacity=".8"/>
+          <rect x="101" y="55" width="16" height="12" rx="3" fill="#1e3a8a" opacity=".8"/>
+          <circle cx="82" cy="96" r="8" fill="#0f172a"/>
+          <circle cx="82" cy="96" r="3" fill="#475569"/>
+          <circle cx="118" cy="96" r="8" fill="#0f172a"/>
+          <circle cx="118" cy="96" r="3" fill="#475569"/>
+          <rect x="68" y="71" width="9" height="5" rx="2" fill="#fbbf24"/>
+          <rect x="123" y="71" width="9" height="5" rx="2" fill="#fbbf24"/>
+          <path d="M158 14 L178 22 L178 44 Q178 60 158 70 Q138 60 138 44 L138 22 Z" fill="#1d4ed8" opacity=".95"/>
+          <path d="M158 20 L173 27 L173 44 Q173 57 158 65 Q143 57 143 44 L143 27 Z" fill="#3b82f6"/>
+          <path d="M151 44 L156 51 L167 37" stroke="white" stroke-width="3"
+            stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="158" cy="43" r="22" stroke="#60a5fa" stroke-width="1.5"
+            stroke-dasharray="4 4" opacity=".45"/>
+          <circle cx="158" cy="43" r="30" stroke="#60a5fa" stroke-width="1"
+            stroke-dasharray="3 6" opacity=".25"/>
+        </svg>
+        <h2 class="hero-title">Welcome Back</h2>
+        <p class="hero-sub">Urban Road Assisted Driving System<br>
+          Real-time YOLOv8 + GNN risk perception.</p>
+      </div>
 
-    <div class="status-panel">
-      <div class="s-item">
-        <span class="s-icon">📷</span>
-        <span>Camera Ready</span>
-        <span class="s-check" id="chk-cam">⏳</span>
-      </div>
-      <div class="s-item">
-        <span class="s-icon">🔊</span>
-        <span>Voice Alert On</span>
-        <span class="s-check" id="chk-voice">✅</span>
-      </div>
-      <div class="s-item">
-        <span class="s-icon">🛡️</span>
-        <span>System Check Passed</span>
-        <span class="s-check" id="chk-sys">⏳</span>
-      </div>
-    </div>
+      <div class="home-side">
+        <div class="status-panel">
+          <div class="status-head">System Status</div>
+          <div class="s-item">
+            <span class="s-icon">📷</span>
+            <span>Camera Ready</span>
+            <span class="s-check" id="chk-cam">⏳</span>
+          </div>
+          <div class="s-item">
+            <span class="s-icon">🔊</span>
+            <span>Voice Alert On</span>
+            <span class="s-check" id="chk-voice">✅</span>
+          </div>
+          <div class="s-item">
+            <span class="s-icon">🛡️</span>
+            <span>System Check Passed</span>
+            <span class="s-check" id="chk-sys">⏳</span>
+          </div>
+        </div>
 
-    <div class="home-btns">
-      <button class="btn-start" id="btn-start" onclick="startDetection()">
-        ▶&nbsp; Start Detection
-      </button>
-      <p class="start-hint">Tap Start Detection to enter the live road monitoring screen.</p>
-      <button class="btn-tut" onclick="showScr('tutorial')">📖&nbsp; View Tutorial</button>
+        <div class="start-card">
+          <button class="btn-start" id="btn-start" onclick="startDetection()">
+            ▶&nbsp; Start Detection
+          </button>
+          <p class="start-hint">Click Start Detection to enter the live road monitoring screen.</p>
+          <button class="btn-tut" onclick="showScr('tutorial')">📖&nbsp; View Tutorial</button>
+        </div>
+      </div>
     </div>
   </div><!-- /home -->
 
   <!-- ══ DETECT ══ -->
   <div class="scr hidden" id="scr-detect">
-    <!-- Risk banner -->
-    <div class="r-banner" id="r-banner">
-      <span class="r-banner-icon" id="b-icon">🛡️</span>
-      <div class="r-banner-txt">
-        <strong id="b-title">Monitoring Active</strong>
-        <small id="b-sub">Scanning road environment…</small>
+    <!-- Left: video feed -->
+    <div class="cam-col">
+      <div class="cam-wrap">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
       </div>
-      <span>›</span>
-    </div>
-
-    <!-- Info cards -->
-    <div class="info-row">
-      <div class="icard">
-        <div class="icard-lbl">🛡 Risk Level</div>
-        <div class="icard-val" id="r-label">Low</div>
-        <div class="score-num low" id="r-score">0</div>
-        <div class="rbar"><div class="rfill" id="r-fill" style="width:0%"></div></div>
-      </div>
-      <div class="icard">
-        <div class="icard-lbl">🚗 Distance · Front Vehicle</div>
-        <div class="dist-num" id="dist-num">—</div>
-        <div class="dist-unit" id="dist-unit">m</div>
+      <div class="cam-foot">
+        <span class="live-dot"></span>
+        <span class="stat">LIVE <b id="cam-res">—</b></span>
+        <span class="stat">FPS: <b id="cam-fps">—</b></span>
+        <span class="stat">Objects: <b id="cam-cnt">0</b></span>
+        <span class="stat" style="margin-left:auto">Latency: <b id="cam-lat">—</b> ms</span>
       </div>
     </div>
 
-    <!-- Camera -->
-    <div class="cam-wrap">
-      <video id="video" autoplay playsinline muted></video>
-      <canvas id="overlay"></canvas>
-    </div>
+    <!-- Right: side panel -->
+    <div class="side-col">
+      <div class="r-banner" id="r-banner">
+        <span class="r-banner-icon" id="b-icon">🛡️</span>
+        <div class="r-banner-txt">
+          <strong id="b-title">Monitoring Active</strong>
+          <small id="b-sub">Scanning road environment…</small>
+        </div>
+      </div>
 
-    <!-- Voice pill -->
-    <div class="voice-pill" id="voice-pill">
-      <span>🔊</span>
-      <span>Voice Warning On</span>
-      <span class="pulse">◌ ◌ ◌</span>
+      <div class="side-section">
+        <div class="sec-h">Risk Overview</div>
+        <div class="info-grid">
+          <div class="icard">
+            <div class="icard-lbl">🛡 RISK LEVEL</div>
+            <div class="icard-val" id="r-label">Low</div>
+            <div class="score-num low" id="r-score">0</div>
+            <div class="rbar"><div class="rfill" id="r-fill" style="width:0%"></div></div>
+          </div>
+          <div class="icard">
+            <div class="icard-lbl">🚗 FRONT VEHICLE</div>
+            <div class="icard-val">Distance</div>
+            <div class="dist-num" id="dist-num">—</div>
+            <div class="dist-unit" id="dist-unit">m</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-section">
+        <div class="sec-h">Detected Objects</div>
+        <div class="det-list" id="det-list">
+          <div class="det-empty">No objects detected yet…</div>
+        </div>
+      </div>
+
+      <div class="side-section">
+        <div class="sec-h">Class Legend</div>
+        <div class="legend-row" id="legend-row"></div>
+      </div>
+
+      <div class="voice-pill" id="voice-pill">
+        <div class="vlabel">
+          <span id="voice-icon">🔊</span>
+          <span id="voice-text">Voice Warning On</span>
+          <span class="pulse" id="voice-pulse">◌ ◌ ◌</span>
+        </div>
+        <button class="vbtn" id="voice-btn" onclick="toggleVoiceBtn()">⏸ Stop</button>
+      </div>
     </div>
   </div><!-- /detect -->
 
   <!-- ══ TUTORIAL ══ -->
   <div class="scr hidden" id="scr-tutorial">
-    <div class="tut-hdr">
-      <h2>📖 How to Use</h2>
-      <p>Smart Drive · Road Guardian Guide</p>
-    </div>
+    <div class="tut-wrap">
+      <div class="tut-hdr">
+        <h2>📖 How to Use</h2>
+        <p>Smart Drive · Road Guardian Guide</p>
+      </div>
 
-    <div class="tstep">
-      <div class="snum">1</div>
-      <div class="stxt">
-        <h3>Allow Camera Access</h3>
-        <p>When prompted, grant the browser camera permission. The system uses your device camera to detect road objects in real time.</p>
+      <div class="tut-grid">
+        <div class="tstep">
+          <div class="snum">1</div>
+          <div class="stxt">
+            <h3>Allow Camera Access</h3>
+            <p>When prompted, grant the browser camera permission. The system uses your camera to detect road objects in real time.</p>
+          </div>
+        </div>
+        <div class="tstep">
+          <div class="snum">2</div>
+          <div class="stxt">
+            <h3>Click Start Detection</h3>
+            <p>Press the Start Detection button on the Home screen. Frames are streamed to the AI inference server automatically.</p>
+          </div>
+        </div>
+        <div class="tstep">
+          <div class="snum">3</div>
+          <div class="stxt">
+            <h3>Read the Risk Dashboard</h3>
+            <p>The right panel shows the current <b>Risk Level</b> (Low / Medium / High), a <b>0–100 risk score</b>, and the estimated <b>distance</b> to the nearest front vehicle.</p>
+          </div>
+        </div>
+        <div class="tstep">
+          <div class="snum">4</div>
+          <div class="stxt">
+            <h3>Bounding Box Colours</h3>
+            <p>Detected objects are highlighted by class:
+              <b style="color:#3b82f6">Blue</b> = vehicles ·
+              <b style="color:#a855f7">Purple</b> = person ·
+              <b style="color:#ef4444">Red</b> = traffic light ·
+              <b style="color:#f97316">Orange</b> = bike/motor.
+            </p>
+          </div>
+        </div>
+        <div class="tstep">
+          <div class="snum">5</div>
+          <div class="stxt">
+            <h3>Voice Alerts</h3>
+            <p>When risk reaches Medium or High, a spoken warning plays automatically. Toggle voice in Settings.</p>
+          </div>
+        </div>
+        <div class="tstep">
+          <div class="snum">6</div>
+          <div class="stxt">
+            <h3>Stop Monitoring</h3>
+            <p>Click the red <b>⏹ Stop</b> button at the top to end the session and return Home.</p>
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="tstep">
-      <div class="snum">2</div>
-      <div class="stxt">
-        <h3>Tap Start Detection</h3>
-        <p>Press the Start Detection button on the Home screen. The camera activates and frames are streamed to the AI inference server automatically.</p>
-      </div>
-    </div>
-    <div class="tstep">
-      <div class="snum">3</div>
-      <div class="stxt">
-        <h3>Read the Risk Dashboard</h3>
-        <p>The monitoring screen shows your current <b>Risk Level</b> (Low / Medium / High), a <b>0–100 risk score</b>, and the estimated <b>distance</b> to the nearest front vehicle.</p>
-      </div>
-    </div>
-    <div class="tstep">
-      <div class="snum">4</div>
-      <div class="stxt">
-        <h3>Bounding Box Colours</h3>
-        <p>Detected objects are highlighted:
-          <b style="color:#3b82f6">Blue</b> = car/bus/truck &nbsp;
-          <b style="color:#a855f7">Purple</b> = person &nbsp;
-          <b style="color:#ef4444">Red</b> = traffic light &nbsp;
-          <b style="color:#f97316">Orange</b> = bike/motor.
-        </p>
-      </div>
-    </div>
-    <div class="tstep">
-      <div class="snum">5</div>
-      <div class="stxt">
-        <h3>Voice Alerts</h3>
-        <p>When risk reaches Medium or High, a spoken warning plays automatically. Toggle voice in Settings.</p>
-      </div>
-    </div>
-    <div class="tstep">
-      <div class="snum">6</div>
-      <div class="stxt">
-        <h3>Stop Monitoring</h3>
-        <p>Tap the red ⏹ Stop button at the bottom of the monitoring screen to end the session and return Home.</p>
-      </div>
-    </div>
 
-    <div style="padding:0 4px 90px">
       <div class="legend-box">
         <h3>Risk Levels Explained</h3>
-        <div class="l-item low"><span class="ldot low"></span>
-          <div><b>Low (0–33)</b><br><small>Road is clear. Drive normally.</small></div>
-        </div>
-        <div class="l-item med"><span class="ldot med"></span>
-          <div><b>Medium (34–66)</b><br><small>Potential hazard ahead — stay alert.</small></div>
-        </div>
-        <div class="l-item hi"><span class="ldot hi"></span>
-          <div><b>High (67–100)</b><br><small>Immediate risk detected — slow down!</small></div>
+        <div class="l-grid">
+          <div class="l-item low"><span class="ldot low"></span>
+            <div><b>Low (0–33)</b><br><small>Road is clear. Drive normally.</small></div>
+          </div>
+          <div class="l-item med"><span class="ldot med"></span>
+            <div><b>Medium (34–66)</b><br><small>Potential hazard ahead — stay alert.</small></div>
+          </div>
+          <div class="l-item hi"><span class="ldot hi"></span>
+            <div><b>High (67–100)</b><br><small>Immediate risk detected — slow down!</small></div>
+          </div>
         </div>
       </div>
     </div>
@@ -363,96 +451,108 @@ html,body{width:100%;height:100%;background:#c7d2fe;
 
   <!-- ══ SETTINGS ══ -->
   <div class="scr hidden" id="scr-settings">
-    <div style="text-align:center;padding:16px 0 4px">
-      <div style="font-size:26px">⚙️</div>
-      <h2 style="font-size:19px;font-weight:800;color:var(--text);margin-top:4px">Settings</h2>
-    </div>
+    <div class="set-wrap">
+      <div class="set-head">
+        <div class="ico">⚙️</div>
+        <h2>Settings</h2>
+      </div>
 
-    <div class="sec-title">Detection</div>
-    <div class="sec-card">
-      <div class="set-row">
-        <div><div class="set-lbl">Frame Rate</div><div class="set-sub">Frames sent per second</div></div>
-        <select id="set-fps" onchange="cfg.fps=+this.value">
-          <option value="5">5 fps</option>
-          <option value="10" selected>10 fps</option>
-          <option value="15">15 fps</option>
-          <option value="20">20 fps</option>
-        </select>
+      <div class="sec-title">Detection</div>
+      <div class="sec-card">
+        <div class="set-row">
+          <div><div class="set-lbl">Frame Rate</div><div class="set-sub">Frames sent per second</div></div>
+          <select id="set-fps" onchange="cfg.fps=+this.value">
+            <option value="5">5 fps</option>
+            <option value="10" selected>10 fps</option>
+            <option value="15">15 fps</option>
+            <option value="20">20 fps</option>
+          </select>
+        </div>
+        <div class="set-row">
+          <div><div class="set-lbl">Image Quality</div><div class="set-sub">JPEG compression level</div></div>
+          <select id="set-qual" onchange="cfg.quality=+this.value">
+            <option value="0.5">Low (fast)</option>
+            <option value="0.7" selected>Medium</option>
+            <option value="0.9">High</option>
+          </select>
+        </div>
       </div>
-      <div class="set-row">
-        <div><div class="set-lbl">Image Quality</div><div class="set-sub">JPEG compression</div></div>
-        <select id="set-qual" onchange="cfg.quality=+this.value">
-          <option value="0.5">Low (fast)</option>
-          <option value="0.7" selected>Medium</option>
-          <option value="0.9">High</option>
-        </select>
-      </div>
-    </div>
 
-    <div class="sec-title">Alerts</div>
-    <div class="sec-card">
-      <div class="set-row">
-        <div><div class="set-lbl">Voice Alerts</div><div class="set-sub">Announce risk level aloud</div></div>
-        <button class="tog on" id="tog-voice" onclick="toggleVoice(this)"></button>
+      <div class="sec-title">Alerts</div>
+      <div class="sec-card">
+        <div class="set-row">
+          <div><div class="set-lbl">Voice Alerts</div><div class="set-sub">Announce risk level aloud</div></div>
+          <button class="tog on" id="tog-voice" onclick="toggleVoice(this)"></button>
+        </div>
+        <div class="set-row">
+          <div><div class="set-lbl">Alert From</div><div class="set-sub">Minimum level that triggers an alert</div></div>
+          <select id="set-thresh" onchange="cfg.alertThresh=this.value">
+            <option value="medium" selected>Medium+</option>
+            <option value="high">High only</option>
+          </select>
+        </div>
       </div>
-      <div class="set-row">
-        <div><div class="set-lbl">Alert From</div><div class="set-sub">Minimum level to alert</div></div>
-        <select id="set-thresh" onchange="cfg.alertThresh=this.value">
-          <option value="medium" selected>Medium+</option>
-          <option value="high">High only</option>
-        </select>
-      </div>
-    </div>
 
-    <div class="sec-title">Server</div>
-    <div class="sec-card">
-      <div class="set-row full-row">
-        <div class="set-lbl">WebSocket URL</div>
-        <input type="text" id="set-ws" value="">
+      <div class="sec-title">Server</div>
+      <div class="sec-card">
+        <div class="set-row full-row">
+          <div class="set-lbl">WebSocket URL</div>
+          <input type="text" id="set-ws" value="">
+        </div>
+        <div class="set-row" style="justify-content:flex-end">
+          <button class="save-btn"
+            onclick="cfg.wsUrl=document.getElementById('set-ws').value;
+                     document.getElementById('set-ws').style.borderColor='var(--green)'">
+            Save
+          </button>
+        </div>
       </div>
-      <div class="set-row" style="justify-content:flex-end">
-        <button class="save-btn"
-          onclick="cfg.wsUrl=document.getElementById('set-ws').value;
-                   document.getElementById('set-ws').style.borderColor='var(--green)'">
-          Save
-        </button>
-      </div>
-    </div>
 
-    <div style="text-align:center;padding:20px;color:var(--muted);font-size:11px">
-      Smart Drive · Road Guardian v1.0<br>
-      InfinifyX — Urban Driving Safety System
+      <div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">
+        Smart Drive · Road Guardian v1.1<br>
+        InfinifyX — Urban Driving Safety System
+      </div>
     </div>
   </div><!-- /settings -->
 
   <!-- ══ HISTORY ══ -->
   <div class="scr hidden" id="scr-history">
-    <div class="h-hdr">
-      <h2>🕐 Detection History</h2>
-    </div>
-    <div id="hist-list">
-      <div class="h-empty">
-        <span class="ico">📋</span>
-        No events recorded yet.<br>Start a session to log risk events.
+    <div class="hist-wrap">
+      <div class="h-hdr">
+        <h2>🕐 Detection History</h2>
+      </div>
+      <div id="hist-list">
+        <div class="h-empty">
+          <span class="ico">📋</span>
+          No events recorded yet.<br>Start a session to log risk events.
+        </div>
       </div>
     </div>
   </div><!-- /history -->
 
-  <!-- ══ BOTTOM NAV ══ -->
-  <nav class="nav" id="nav">
-    <button class="nbtn on" id="nb-home" onclick="showScr('home')">🏠<span>Home</span></button>
-    <button class="stop-btn hidden" id="nb-stop" onclick="stopDetection()">⏹</button>
-    <button class="nbtn" id="nb-hist" onclick="showScr('history')">🕐<span>History</span></button>
-    <button class="nbtn" id="nb-set"  onclick="showScr('settings')">⚙️<span>Settings</span></button>
-  </nav>
-
-</div><!-- /shell -->
+</div><!-- /app -->
 
 <script>
 // ─── Config ────────────────────────────────────────────────
+// Detect SageMaker JupyterLab proxy environment so the WebSocket URL works
+// both locally and when the page is served via the SageMaker proxy gateway.
+function buildWsUrl(){
+  const wsProtocol = (location.protocol === 'https:') ? 'wss://' : 'ws://';
+  const path = location.pathname || '/';
+  // Match SageMaker / JupyterLab proxy prefix, e.g.
+  //   /jupyterlab/default/proxy/8000/...
+  //   /proxy/8000/...
+  const m = path.match(/^(.*\/proxy\/\d+)(?:\/|$)/);
+  if (m) {
+    // Reuse the same proxy prefix for the WebSocket path.
+    return wsProtocol + location.host + m[1] + '/ws';
+  }
+  return wsProtocol + location.host + '/ws';
+}
+
 const cfg = {
   fps: 10, quality: 0.7,
-  wsUrl: `ws://${location.host}/ws`,
+  wsUrl: buildWsUrl(),
   voiceOn: true,
   alertThresh: 'medium',
 };
@@ -463,32 +563,57 @@ let ws=null, camStream=null, sendTimer=null, curScr='home';
 let lastSpokenLabel=null;
 const histEvents=[];
 
+// FPS / latency tracking
+let frameSentTs=0, lastReplyTs=0, recvCount=0, fpsTimer=null;
+
+// Class → colour mapping (BDD100K + COCO compatible).
 const CLS_COLOR = {
   car:'#3b82f6', bus:'#2563eb', truck:'#1d4ed8',
-  person:'#a855f7',
+  person:'#a855f7', pedestrian:'#a855f7', rider:'#c084fc',
   'traffic light':'#ef4444', 'traffic sign':'#eab308',
-  bike:'#f97316', motor:'#f97316',
-  train:'#6366f1', other:'#94a3b8',
+  bicycle:'#f97316', bike:'#f97316', motorcycle:'#fb923c', motor:'#fb923c',
+  train:'#6366f1',
 };
+const DEFAULT_COLOR = '#94a3b8';
+
+const LEGEND_ITEMS = [
+  ['Vehicles', '#3b82f6'],
+  ['Person',   '#a855f7'],
+  ['Traffic Light', '#ef4444'],
+  ['Traffic Sign',  '#eab308'],
+  ['Bike / Motor',  '#f97316'],
+  ['Other',         DEFAULT_COLOR],
+];
+
+function colorFor(name){
+  if(!name) return DEFAULT_COLOR;
+  return CLS_COLOR[name.toLowerCase()] || DEFAULT_COLOR;
+}
+
+function renderLegend(){
+  const row=document.getElementById('legend-row');
+  row.innerHTML=LEGEND_ITEMS.map(([n,c])=>
+    `<span class="lg"><span class="lg-sw" style="background:${c}"></span>${n}</span>`
+  ).join('');
+}
+renderLegend();
 
 // --- Screen routing ---
-
 function showScr(name){
   ['home','detect','tutorial','settings','history'].forEach(s=>{
     document.getElementById('scr-'+s).classList.toggle('hidden', s!==name);
   });
-  const nav=document.getElementById('nav');
-  const stopBtn=document.getElementById('nb-stop');
-  ['home','hist','set'].forEach(id=>{
+  ['home','tut','hist','set'].forEach(id=>{
     const el=document.getElementById('nb-'+id);
-    if(el) el.classList.toggle('on', (id==='home'&&name==='home')||(id==='hist'&&name==='history')||(id==='set'&&name==='settings'));
+    if(!el) return;
+    const map={home:'home',tut:'tutorial',hist:'history',set:'settings'};
+    el.classList.toggle('on', map[id]===name);
   });
-  if(name==='detect'){
-    nav.classList.add('dark'); stopBtn.classList.remove('hidden');
-  } else {
-    nav.classList.remove('dark'); stopBtn.classList.add('hidden');
-  }
+  const stopBtn=document.getElementById('nb-stop');
+  if(name==='detect'){ stopBtn.classList.remove('hidden'); }
+  else { stopBtn.classList.add('hidden'); }
   curScr=name;
+  if(name==='detect') requestAnimationFrame(syncCanvas);
 }
 
 // ─── Camera permission pre-check ────────────────────────────
@@ -497,7 +622,7 @@ navigator.permissions&&navigator.permissions.query({name:'camera'}).then(r=>{
     document.getElementById('chk-cam').textContent='✅';
     document.getElementById('chk-sys').textContent='✅';
   }
-});
+}).catch(()=>{});
 
 // ─── Start Detection ────────────────────────────────────────
 async function startDetection(){
@@ -506,7 +631,7 @@ async function startDetection(){
 
   try{
     camStream=await navigator.mediaDevices.getUserMedia({
-      video:{width:{ideal:1280},height:{ideal:720},facingMode:'environment'},
+      video:{width:{ideal:1280},height:{ideal:720}},
     });
     video.srcObject=camStream;
     document.getElementById('chk-cam').textContent='✅';
@@ -522,14 +647,21 @@ async function startDetection(){
   ws.onopen=()=>{
     showScr('detect'); syncCanvas();
     sendTimer=setInterval(sendFrame, 1000/cfg.fps);
+    fpsTimer=setInterval(updateFpsDisplay, 1000);
   };
-  ws.onmessage=evt=>{ try{ renderResult(JSON.parse(evt.data)); }catch(_){} };
-  ws.onerror=ws.onclose=()=>clearInterval(sendTimer);
+  ws.onmessage=evt=>{
+    lastReplyTs=performance.now();
+    recvCount++;
+    try{ renderResult(JSON.parse(evt.data)); }catch(_){}
+  };
+  ws.onerror=ws.onclose=()=>{
+    clearInterval(sendTimer); clearInterval(fpsTimer);
+  };
 }
 
 // ─── Stop Detection ─────────────────────────────────────────
 function stopDetection(){
-  clearInterval(sendTimer);
+  clearInterval(sendTimer); clearInterval(fpsTimer);
   if(ws){ws.close();ws=null;}
   if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
   ctx.clearRect(0,0,overlay.width,overlay.height);
@@ -548,36 +680,70 @@ const cap=document.createElement('canvas');
 const capCtx=cap.getContext('2d');
 
 function syncCanvas(){
-  overlay.width=overlay.clientWidth;
-  overlay.height=overlay.clientHeight;
+  const wrap=document.querySelector('.cam-wrap');
+  if(!wrap) return;
+  overlay.width=wrap.clientWidth;
+  overlay.height=wrap.clientHeight;
 }
-new ResizeObserver(syncCanvas).observe(document.getElementById('scr-detect'));
+window.addEventListener('resize', syncCanvas);
+new ResizeObserver(syncCanvas).observe(document.body);
 
 function sendFrame(){
   if(!ws||ws.readyState!==1||!video.videoWidth) return;
   cap.width=video.videoWidth; cap.height=video.videoHeight;
   capCtx.drawImage(video,0,0);
+  frameSentTs=performance.now();
   cap.toBlob(blob=>{
     if(blob&&ws&&ws.readyState===1) blob.arrayBuffer().then(buf=>ws.send(buf));
   },'image/jpeg',cfg.quality);
 }
 
+function updateFpsDisplay(){
+  document.getElementById('cam-fps').textContent=recvCount;
+  recvCount=0;
+  if(video.videoWidth){
+    document.getElementById('cam-res').textContent=`${video.videoWidth}×${video.videoHeight}`;
+  }
+}
+
+// ─── Backend payload normaliser ─────────────────────────────
+// Backend returns: { boxes:[{box:[x1,y1,x2,y2], cls, cls_name, confidence}], risk:{...} }
+// Normalise to flat fields for the rest of the UI.
+function normaliseBoxes(rawBoxes){
+  return (rawBoxes||[]).map(b=>{
+    let x1, y1, x2, y2;
+    if(Array.isArray(b.box) && b.box.length>=4){
+      [x1,y1,x2,y2]=b.box;
+    } else {
+      x1=b.x1; y1=b.y1; x2=b.x2; y2=b.y2;
+    }
+    const name=(b.cls_name || b.class_name || b.name || 'object').toString();
+    const conf=(b.confidence!=null) ? b.confidence : (b.conf!=null ? b.conf : null);
+    return {x1,y1,x2,y2,name,conf,cls:b.cls};
+  }).filter(b=>Number.isFinite(b.x1)&&Number.isFinite(b.x2));
+}
+
 // ─── Render result ──────────────────────────────────────────
 function renderResult(data){
-  const boxes=data.boxes||[];
+  const boxes=normaliseBoxes(data.boxes);
   const risk=data.risk||{};
   const label=(risk.label||'Low').toLowerCase();
   const scoreInt=Math.round((risk.score||0)*100);
 
+  document.getElementById('cam-cnt').textContent=boxes.length;
+  if(frameSentTs>0){
+    document.getElementById('cam-lat').textContent=Math.round(lastReplyTs-frameSentTs);
+  }
+
   updateDash(label, scoreInt, boxes);
   drawBoxes(boxes);
+  updateDetList(boxes);
   logEvent(label, scoreInt);
   doVoice(label);
 }
 
 // ─── Dashboard update ───────────────────────────────────────
 function updateDash(label, sc, boxes){
-  // Banner
   const banner=document.getElementById('r-banner');
   const bTitle=document.getElementById('b-title');
   const bSub=document.getElementById('b-sub');
@@ -601,8 +767,9 @@ function updateDash(label, sc, boxes){
   const fill=document.getElementById('r-fill');
   fill.style.width=sc+'%';
   fill.style.background=label==='high'?'var(--red)':label==='medium'?'var(--orange)':'var(--green)';
-  // Distance
-  const vehicles=boxes.filter(b=>['car','bus','truck'].includes(b.class_name));
+  // Distance estimate from largest vehicle box
+  const VEH=['car','bus','truck'];
+  const vehicles=boxes.filter(b=>VEH.includes((b.name||'').toLowerCase()));
   const dEl=document.getElementById('dist-num');
   const uEl=document.getElementById('dist-unit');
   if(vehicles.length>0){
@@ -610,7 +777,7 @@ function updateDash(label, sc, boxes){
       (b.x2-b.x1)*(b.y2-b.y1)>(a.x2-a.x1)*(a.y2-a.y1)?b:a);
     const fH=video.videoHeight||720;
     const ratio=(front.y2-front.y1)/fH;
-    const dist=Math.min(99,Math.max(2,Math.round(1.8/ratio)));
+    const dist=Math.min(99,Math.max(2,Math.round(1.8/Math.max(ratio,0.001))));
     dEl.textContent=dist; uEl.textContent='m';
     dEl.style.color=dist<8?'var(--red)':dist<15?'var(--orange)':'var(--green)';
   } else {
@@ -623,25 +790,35 @@ function updateDash(label, sc, boxes){
 function drawBoxes(boxes){
   ctx.clearRect(0,0,overlay.width,overlay.height);
   if(!video.videoWidth) return;
-  const sx=overlay.width/video.videoWidth;
-  const sy=overlay.height/video.videoHeight;
+
+  // <video> uses object-fit:contain → compute the actual image rect inside the canvas.
+  const cw=overlay.width, ch=overlay.height;
+  const vw=video.videoWidth, vh=video.videoHeight;
+  const scale=Math.min(cw/vw, ch/vh);
+  const dispW=vw*scale, dispH=vh*scale;
+  const offX=(cw-dispW)/2, offY=(ch-dispH)/2;
+
   boxes.forEach(b=>{
-    const x=b.x1*sx, y=b.y1*sy;
-    const w=(b.x2-b.x1)*sx, h=(b.y2-b.y1)*sy;
-    const col=CLS_COLOR[b.class_name]||'#94a3b8';
-    const conf=b.confidence!=null?(b.confidence*100).toFixed(0)+'%':'';
-    const txt=(b.class_name||'')+(conf?' '+conf:'');
-    // Box
-    ctx.strokeStyle=col; ctx.lineWidth=2.5;
+    const x=offX + b.x1*scale;
+    const y=offY + b.y1*scale;
+    const w=(b.x2-b.x1)*scale;
+    const h=(b.y2-b.y1)*scale;
+    const col=colorFor(b.name);
+    const conf=b.conf!=null?(b.conf*100).toFixed(0)+'%':'';
+    const txt=(b.name||'')+(conf?' '+conf:'');
+    // Box (with subtle shadow for visibility on bright frames)
+    ctx.lineWidth=2.5; ctx.strokeStyle=col;
+    ctx.shadowColor='rgba(0,0,0,.7)'; ctx.shadowBlur=4;
     ctx.strokeRect(x,y,w,h);
-    // Label
-    ctx.font='bold 11px -apple-system,sans-serif';
+    ctx.shadowBlur=0;
+    // Label pill
+    ctx.font='bold 12px -apple-system,sans-serif';
     const tw=ctx.measureText(txt).width+12;
     ctx.fillStyle=col;
-    roundRect(ctx, x-1, y-18, tw, 18, 4);
+    roundRect(ctx, x-1, y-20, tw, 18, 4);
     ctx.fill();
     ctx.fillStyle='#fff';
-    ctx.fillText(txt, x+5, y-5);
+    ctx.fillText(txt, x+5, y-7);
   });
 }
 
@@ -653,6 +830,33 @@ function roundRect(c,x,y,w,h,r){
   c.lineTo(x+r,y+h); c.arcTo(x,y+h,x,y+h-r,r);
   c.lineTo(x,y+r); c.arcTo(x,y,x+r,y,r);
   c.closePath();
+}
+
+// ─── Detected-objects list (right panel) ────────────────────
+function updateDetList(boxes){
+  const list=document.getElementById('det-list');
+  if(!boxes.length){
+    list.innerHTML='<div class="det-empty">No objects detected yet…</div>';
+    return;
+  }
+  // group by class
+  const groups={};
+  boxes.forEach(b=>{
+    const k=(b.name||'object').toLowerCase();
+    if(!groups[k]) groups[k]={count:0, conf:0, name:k};
+    groups[k].count++;
+    if(b.conf!=null) groups[k].conf=Math.max(groups[k].conf, b.conf);
+  });
+  const items=Object.values(groups).sort((a,b)=>b.count-a.count).slice(0,10);
+  list.innerHTML=items.map(g=>{
+    const col=colorFor(g.name);
+    const confTxt=g.conf>0?`${(g.conf*100).toFixed(0)}%`:'';
+    return `<div class="det-item">
+      <div class="det-swatch" style="background:${col}"></div>
+      <div class="det-name">${g.name}</div>
+      <div class="det-conf">×${g.count}${confTxt?' · '+confTxt:''}</div>
+    </div>`;
+  }).join('');
 }
 
 // ─── History ────────────────────────────────────────────────
@@ -700,10 +904,38 @@ function doVoice(label){
   u.rate=1.05; speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
 function toggleVoice(btn){
-  cfg.voiceOn=!cfg.voiceOn;
-  btn.classList.toggle('on',cfg.voiceOn);
-  document.getElementById('voice-pill').classList.toggle('muted',!cfg.voiceOn);
-  document.getElementById('chk-voice').textContent=cfg.voiceOn?'✅':'🔇';
+  setVoiceState(!cfg.voiceOn);
+}
+
+// Triggered by the Play / Stop button on the detect screen voice pill.
+function toggleVoiceBtn(){
+  setVoiceState(!cfg.voiceOn);
+}
+
+function setVoiceState(on){
+  cfg.voiceOn = !!on;
+  // Settings toggle
+  const tog=document.getElementById('tog-voice');
+  if(tog) tog.classList.toggle('on', cfg.voiceOn);
+  // Detect-screen voice pill
+  const pill=document.getElementById('voice-pill');
+  if(pill) pill.classList.toggle('muted', !cfg.voiceOn);
+  const vIcon=document.getElementById('voice-icon');
+  const vText=document.getElementById('voice-text');
+  const vPulse=document.getElementById('voice-pulse');
+  const vBtn=document.getElementById('voice-btn');
+  if(vIcon)  vIcon.textContent  = cfg.voiceOn ? '🔊' : '🔇';
+  if(vText)  vText.textContent  = cfg.voiceOn ? 'Voice Warning On' : 'Voice Warning Off';
+  if(vPulse) vPulse.style.visibility = cfg.voiceOn ? 'visible' : 'hidden';
+  if(vBtn){
+    vBtn.textContent = cfg.voiceOn ? '⏸ Stop' : '▶ Play';
+    vBtn.classList.toggle('stopped', !cfg.voiceOn);
+  }
+  // Home status row
+  const chk=document.getElementById('chk-voice');
+  if(chk) chk.textContent = cfg.voiceOn ? '✅' : '🔇';
+  // If turning off, immediately cancel any in-flight speech.
+  if(!cfg.voiceOn){ try{ speechSynthesis.cancel(); }catch(_){} lastSpokenLabel=null; }
 }
 </script>
 </body>

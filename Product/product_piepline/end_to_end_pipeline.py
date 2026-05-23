@@ -1,5 +1,4 @@
-"""
-End-to-End Assisted Driving Pipeline
+"""End-to-End Assisted Driving Pipeline
 ======================================
 Chains all 6 product pipeline stages into a single ClearML pipeline:
 
@@ -13,14 +12,19 @@ Chains all 6 product pipeline stages into a single ClearML pipeline:
 Training steps are intentionally small for quick validation:
   YOLO: 1 epoch, GNN: 1 epoch, HPO: 2 trials × 1 epoch, Multi: 2 archs × 1 epoch
   Subset: 0.1% of BDD100K
-  Models saved to models/e2e/ (never overwrite existing models/)
+  Models saved to models/e2e/<timestamp>/ (never overwrite existing models/)
 
-Run:
+Run locally:
+  cd <project_root>
   python Product/product_piepline/end_to_end_pipeline.py
 """
 
 import os
+from datetime import datetime
 from clearml import PipelineDecorator
+
+# Global timestamp for this run — all model outputs go under models/e2e/<RUN_TAG>/
+RUN_TAG = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 # ==========================================
 # 0. Secure Configuration Loading
@@ -91,9 +95,13 @@ def data_preprocessing_step(dataset_path: str, subset_percentage=None) -> str:
     if not isinstance(data, list):
         raise ValueError("Expected JSON list of image annotations")
 
-    sample_size = max(1, int(len(data) * (subset_percentage / 100.0)))
+    # Use max(2, ...) so there's at least 1 image in train and 1 in val
+    raw_count = len(data) * (subset_percentage / 100.0)
+    sample_size = max(2, int(round(raw_count)))  # round then floor, min 2
+    sample_size = min(sample_size, len(data))    # never exceed dataset length
     sampled = random.sample(data, sample_size)
-    split_idx = int(len(sampled) * 0.8)
+    split_idx = max(1, int(len(sampled) * 0.8))  # guarantee ≥1 train image
+    split_idx = min(split_idx, len(sampled) - 1)  # guarantee ≥1 val image
     train_items, val_items = sampled[:split_idx], sampled[split_idx:]
     print(f"Sampled {sample_size} → train {len(train_items)}, val {len(val_items)}")
 
@@ -188,8 +196,10 @@ def yolo_train_step(yaml_path: str, init_weight: str, epochs: int,
 
     model = YOLO(init_weight)
     device = 0 if torch.cuda.is_available() else "cpu"
-    # Save to models/e2e/ to avoid overwriting production models
-    e2e_dir = os.path.join("models", "e2e", "yolo")
+    # Save with timestamp to never overwrite previous runs
+    from datetime import datetime
+    run_tag = os.environ.get("E2E_RUN_TAG", datetime.now().strftime("%Y%m%d_%H%M%S"))
+    e2e_dir = os.path.join("models", "e2e", run_tag, "yolo")
     os.makedirs(e2e_dir, exist_ok=True)
     results = model.train(
         data=yaml_path, epochs=epochs, imgsz=imgsz, batch=batch,
@@ -352,9 +362,11 @@ def graph_build_step(yolo_weight_path: str, yolo_cache_path: str, data_dir: str)
         score = score / max(len(dets), 1)
         dataset.append((graph, torch.tensor(score, dtype=torch.float32)))
 
+    from datetime import datetime
+    run_tag = os.environ.get("E2E_RUN_TAG", datetime.now().strftime("%Y%m%d_%H%M%S"))
     project_root = os.path.abspath(os.path.join(os.path.dirname(yolo_weight_path), "..", ".."))
-    # Save to models/e2e/gnn/ to avoid overwriting production graph_cache.pt
-    out_dir = os.path.join(project_root, "models", "e2e", "gnn")
+    # Save with timestamp to never overwrite previous runs
+    out_dir = os.path.join(project_root, "models", "e2e", run_tag, "gnn")
     os.makedirs(out_dir, exist_ok=True)
     cache_path = os.path.join(out_dir, "graph_cache.pt")
     torch.save(dataset, cache_path)
@@ -418,8 +430,11 @@ def gnn_train_step(graph_cache_path: str, hidden_dim: int, dropout: float,
     model = SpatioTemporalModel(hidden_dim=hidden_dim, dropout=dropout).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     loss_fn = nn.MSELoss()
-    best_loss, model_path = float("inf"), os.path.join("models", "e2e", "gnn", "risk_gnn_model.pt")
+    from datetime import datetime
+    run_tag = os.environ.get("E2E_RUN_TAG", datetime.now().strftime("%Y%m%d_%H%M%S"))
+    model_path = os.path.join("models", "e2e", run_tag, "gnn", "risk_gnn_model.pt")
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    best_loss = float("inf")
 
     for ep in range(epochs):
         model.train(); total = 0
@@ -639,8 +654,10 @@ def multi_model_step(graph_cache_path: str, epochs: int = 2) -> dict:
         results.append({"architecture": arch, "accuracy": float(acc), "macro_f1": float(f1)})
         print(f"[multi_model] {arch}: acc={acc:.3f} f1={f1:.3f}")
 
-        # Register model
-        model_path = os.path.join("models", "e2e", "gnn", f"risk_{arch}_model.pt")
+        # Register model — use timestamp path
+        from datetime import datetime
+        run_tag = os.environ.get("E2E_RUN_TAG", datetime.now().strftime("%Y%m%d_%H%M%S"))
+        model_path = os.path.join("models", "e2e", run_tag, "gnn", f"risk_{arch}_model.pt")
         os.makedirs(os.path.dirname(model_path), exist_ok=True)
         torch.save({"model_state_dict": model.state_dict(), "architecture": arch,
                      "hidden_dim": 128, "dropout": 0.3}, model_path)
@@ -808,6 +825,11 @@ if __name__ == "__main__":
     print(f"[*] Project root  : {project_root}")
     print(f"[*] Dataset path  : {dataset_path}")
     print(f"[*] YOLO weight   : {yolo_weight}")
+
+    # Set global run tag so all steps use same timestamp folder
+    os.environ["E2E_RUN_TAG"] = RUN_TAG
+    print(f"[*] Run tag       : {RUN_TAG}")
+    print(f"[*] Models output : models/e2e/{RUN_TAG}/")
 
     # PipelineDecorator.run_locally() runs the controller + all steps
     # in the local process (subprocess per step). No agent queue needed.

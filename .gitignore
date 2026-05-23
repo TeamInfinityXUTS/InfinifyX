@@ -20,3 +20,10 @@ data_preprocessing/bdd100k_tiny.yaml
 data_preprocessing/datasets/
 AI-Studio-ClearML/
 
+# E2E pipeline outputs (timestamped model runs)
+models/e2e/
+runs/
+
+# Stray weight files at repo root
+/yolo*.pt
+
