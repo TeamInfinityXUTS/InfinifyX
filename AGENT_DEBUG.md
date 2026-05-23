@@ -169,3 +169,63 @@ Start-Process "http://localhost:8000"
 - Server loads both models at startup and serves the browser client at `http://localhost:8000`.
 - WebSocket inference pipeline: JPEG frame → YOLO detections → spatial graph → GNN risk score → JSON response.
 - Browser client overlays bounding boxes and a colour-coded risk banner (Low/Medium/High) in real time.
+
+---
+
+## CI/CD Pipeline Configuration
+
+**Date**: 2026-05-26
+**Context**: Implemented CI and CD workflows via GitHub Actions for automated pipeline triggering and inference server deployment to AWS SageMaker.
+
+### CI Pipeline — ClearML End-to-End Training (`.github/workflows/data_ci_pipeline.yml`)
+
+**Trigger**: Push to `main` ONLY when relevant files change (path filter):
+- `Product/product_piepline/**`
+- `MLOps/**`
+- `.github/workflows/data_ci_pipeline.yml`
+
+Changes to `server/`, `scripts/`, or other unrelated files will NOT trigger this workflow.
+
+**What it does**:
+1. Creates a ClearML task pointing to `Product/product_piepline/end_to_end_pipeline.py`
+2. Enqueues to `data_engineer` queue with CI-optimized params (0.1% subset, 1 epoch)
+3. ClearML agent on the local machine picks up and executes
+
+**Manual trigger**: Always available via `workflow_dispatch` in GitHub Actions UI.
+
+### CD Pipeline — Deploy Inference Server (`.github/workflows/cd_deploy.yml`)
+
+**Trigger**: Manual only (`workflow_dispatch`). Requires typing "deploy" to confirm.
+
+**What it does**:
+1. Validates `server/inference_server.py` syntax (`py_compile`)
+2. Confirms `scripts/deploy.sh` exists
+3. Outputs deployment instructions for SageMaker
+
+**Note**: GitHub Actions cannot directly SSH into SageMaker. After CD validation passes, the user must run the deploy script on SageMaker manually:
+```bash
+cd /home/sagemaker-user/InfinifyX && bash scripts/deploy.sh
+```
+
+### Deploy Script (`scripts/deploy.sh`)
+
+A one-command deployment helper for SageMaker:
+1. `git pull origin main` — fetches latest code
+2. `pkill -f "inference_server"` — stops existing server
+3. `nohup python server/inference_server.py &` — restarts in background on port 8000
+4. Verifies the process started successfully and prints PID
+
+**Usage on SageMaker**:
+```bash
+bash ~/InfinifyX/scripts/deploy.sh
+```
+
+**Access URL**:
+```
+https://tzapmkixqvdpkjz.studio.sagemaker.ap-southeast-2.app.aws/jupyterlab/default/proxy/8000/
+```
+
+### SageMaker Notes:
+- Stopping a SageMaker Space clears all running processes and crontab entries
+- The project directory (`/home/sagemaker-user/InfinifyX`) persists on EFS across restarts
+- After each Space restart, run `bash scripts/deploy.sh` to restore the server
