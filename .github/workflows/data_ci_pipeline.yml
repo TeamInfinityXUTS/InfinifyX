@@ -55,11 +55,12 @@ jobs:
         )
 
         # Override pipeline parameters (CI uses small subset for speed)
-        task.set_parameter("General/dataset_path", r"D:\UTS\2026Autumn\42174 Artificial Intelligence Studio\Infinity\InfinifyX\data_preprocessing\datasets\bdd100k")
+        task.set_parameter("General/dataset_path", "data_preprocessing/datasets/bdd100k")
         task.set_parameter("General/subset_percentage", 0.1)
         task.set_parameter("General/yolo_epochs", 1)
         task.set_parameter("General/gnn_epochs", 1)
         task.set_parameter("General/hpo_trials", 2)
+        task.set_parameter("General/hpo_epochs", 1)
         task.set_parameter("General/multi_epochs", 1)
 
         # Enqueue to the data_engineer queue — agent will pick it up

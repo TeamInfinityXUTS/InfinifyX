@@ -5,7 +5,7 @@ from utils.evaluation_utils import _plot_evaluation_results
 
 
 PROJECT_NAME = "MLOps_Product_Assisted_Driving"
-EXECUTION_QUEUE = "Yolov8_training_v0.1"
+EXECUTION_QUEUE = "data_engineer"
 
 DEFAULT_GRAPH_CACHE = "graph_cache.pt"
 DEFAULT_GRAPH_CACHE_TASK_ID = "cc75418e3fd94e0f8d7c78a0e2b2f8e9"
@@ -44,7 +44,7 @@ def get_args():
     )
     parser.add_argument(
         "--queue",
-        default=EXECUTION_QUEUE,
+        default="data_engineer",
         help="ClearML queue name for remote execution.",
     )
 
@@ -790,3 +790,11 @@ if __name__ == "__main__":
     )
 
     print("Best GNN result:", result)
+
+    if args.state_file:
+        import json
+        with open(args.state_file, "r") as f:
+            state = json.load(f)
+        state["multi_model_result"] = str(result)
+        with open(args.state_file, "w") as f:
+            json.dump(state, f, indent=4)

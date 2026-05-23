@@ -340,7 +340,7 @@ if __name__ == "__main__":
 
     result = yolo_training_evaluation_pipeline(
         yaml_path=yaml_path,
-        weight="Model/Yolo_best.pt",
+        weight="models/yolo/Yolov8_best.pt",
         epochs=args.epochs,
         imgsz=args.imgsz,
         batch=args.batch

@@ -1,89 +1,115 @@
+import argparse
+import importlib
 import os
-from urllib.parse import unquote, urlparse
+import sys
 
-from clearml import InputModel, PipelineDecorator, Task
+from clearml import OutputModel, Task
+from clearml.automation import (
+    DiscreteParameterRange,
+    HyperParameterOptimizer,
+    UniformIntegerParameterRange,
+    UniformParameterRange,
+)
+from clearml.automation.optuna import OptimizerOptuna
+
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+def _add_utils_path_from_task_artifact(task):
+    utils_names = [
+        name
+        for name in task.artifacts.keys()
+        if name == "utils" or "utils" in name
+    ]
+    if not utils_names:
+        return False
+
+    artifact_name = utils_names[0]
+    utils_path = task.artifacts[artifact_name].get_local_copy()
+    if os.path.isdir(utils_path):
+        if utils_path not in sys.path:
+            sys.path.insert(0, utils_path)
+    else:
+        parent_dir = os.path.dirname(utils_path)
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+    return True
+
+def get_plot_evaluation_results(task=None):
+    try:
+        from utils.evaluation_utils import _plot_evaluation_results
+        return _plot_evaluation_results
+    except ModuleNotFoundError:
+        if task is None:
+            raise
+        if _add_utils_path_from_task_artifact(task):
+            from utils.evaluation_utils import _plot_evaluation_results
+            return _plot_evaluation_results
+        raise
 
 
-PROJECT_NAME = "HPO_Pipeline"
+PROJECT_NAME = "MLOps_Product_Assisted_Driving"
+BASE_TASK_NAME = "GNN_Hyper_Parameter_Tuning_Base"
+OPTIMIZER_TASK_NAME = "GNN_Hyper_Parameter_Tuning_Controller"
+EXECUTION_QUEUE = "data_engineer"
+RUN_MODE_CONTROLLER = "controller"
+RUN_MODE_TRIAL = "trial"
+
 DEFAULT_GRAPH_CACHE = "graph_cache.pt"
-DEFAULT_GRAPH_CACHE_TASK_ID = "e42c8c37d17a402384607e9308e5a53e"
+DEFAULT_GRAPH_CACHE_TASK_ID = "ac6691e3ce1b4124ae670ba8c84e331d"
 DEFAULT_GRAPH_CACHE_ARTIFACT_NAME = "graph_cache"
-EXECUTION_QUEUE = "Yolov8_training_v0.1"
-RANDOM_SEED = 42
-EARLY_STOPPING_PATIENCE = 10
-EARLY_STOPPING_METRIC = "hybrid"
 
 
-DEFAULT_SEARCH_SPACE = [
-    # Small model, low LR
-    {"hidden_dim": 64,  "dropout": 0.1, "lr": 1e-3,  "batch_size": 32},
-    {"hidden_dim": 64,  "dropout": 0.15, "lr": 5e-4,  "batch_size": 16},
-    # Medium model, moderate LR
-    {"hidden_dim": 128, "dropout": 0.2, "lr": 5e-4,  "batch_size": 16},
-    {"hidden_dim": 128, "dropout": 0.3, "lr": 3e-4,  "batch_size": 32},
-    {"hidden_dim": 128, "dropout": 0.25, "lr": 1e-3,  "batch_size": 8},
-    # Large model, careful tuning
-    {"hidden_dim": 256, "dropout": 0.3, "lr": 3e-4,  "batch_size": 16},
-    {"hidden_dim": 256, "dropout": 0.4, "lr": 1e-4,  "batch_size": 32},
-    {"hidden_dim": 256, "dropout": 0.35, "lr": 5e-5,  "batch_size": 64},
-]
+MAX_CONCURRENT_TASKS = 2
+TOTAL_MAX_JOBS = 2
+REPORT_TOP_EXPERIMENTS = 3
+HPO_REPORT_PERIOD_MINUTES = 1
+MIN_ITERATION_PER_JOB = 1
+MAX_ITERATION_PER_JOB = 2
 
 
-@PipelineDecorator.component(cache=False, execution_queue=EXECUTION_QUEUE)
-def hpo_step(
-    graph_cache: str = "graph_cache.pt",
-    graph_cache_model_id: str = None,
-    graph_cache_task_id: str = "e42c8c37d17a402384607e9308e5a53e",
-    graph_cache_artifact_name: str = "graph_cache",
-    n_trials: int = 3,
-    max_epochs_per_trial: int = 2,
-    val_split: float = 0.15,
-    test_split: float = 0.15,
-) -> dict:
-    """
-    Returns:
-        dict: best_config, best_f1 (val), test_f1, and detailed metrics
-    
-    Data Split: Train 70% / Val 15% / Test 15%
-    Objective: 3-class Classification with CrossEntropyLoss
-    """
-    import torch
+def run_trial_from_current_task():
+    import os
+    from urllib.parse import unquote, urlparse
+
     import numpy as np
+    import torch
     import torch.nn as nn
     import torch.nn.functional as F
-    from clearml import Task
-    from torch_geometric.loader import DataLoader  # PyG's DataLoader for graph batching
-    from torch_geometric.nn import GCNConv, global_mean_pool
+    from clearml import InputModel, OutputModel, Task
     from sklearn.metrics import (
         accuracy_score,
-        precision_recall_fscore_support,
         classification_report,
-        confusion_matrix,
+        precision_recall_fscore_support,
     )
-    import matplotlib.pyplot as plt
+    from torch.utils.data import Dataset, Subset
+    from torch_geometric.data import Data
+    from torch_geometric.loader import DataLoader
+    from torch_geometric.nn import GCNConv, global_mean_pool
 
-    RANDOM_SEED = 42
-    EARLY_STOPPING_PATIENCE = 10
-    EARLY_STOPPING_METRIC = "hybrid"
+    task = Task.current_task()
+    if task is None:
+        task = Task.init(
+            project_name=PROJECT_NAME,
+            task_name=BASE_TASK_NAME,
+            reuse_last_task_id=False,
+        )
 
-    torch.manual_seed(RANDOM_SEED)
-    np.random.seed(RANDOM_SEED)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(RANDOM_SEED)
-
-    task = Task.current_task() or Task.init(project_name="HPO_Pipeline", task_name="GNN_HPO_V2")
-    logger = task.get_logger()
-
-    logger.report_text("=" * 100)
-    logger.report_text("GNN HYPERPARAMETER OPTIMIZATION (HPO) - VERSION 2: PRODUCTION-LEVEL")
-    logger.report_text("="*100)
-    logger.report_text(f"✓ Train/Val/Test Split: {1-val_split-test_split:.0%} / {val_split:.0%} / {test_split:.0%}")
-    logger.report_text(f"✓ Objective: 3-class Classification (CrossEntropyLoss + argmax)")
-    logger.report_text(f"✓ Early Stopping: {EARLY_STOPPING_METRIC.upper()} (patience={EARLY_STOPPING_PATIENCE} epochs)")
-    logger.report_text(f"✓ Label Strategy: Percentile-based thresholding (33th, 66th from train set only)")
-    logger.report_text(f"✓ Random Seed: {RANDOM_SEED} (reproducible)")
-    logger.report_text(f"✓ Search Space: {n_trials} configs from paper-level grid (dropout scaling + batch size coupling)")
-    logger.report_text("=" * 100)
+    default_config = {
+        "run_mode": RUN_MODE_TRIAL,
+        "hidden_dim": 128,
+        "dropout": 0.3,
+        "lr": 5e-4,
+        "weight_decay": 1e-4,
+        "epochs": 10,
+        "batch_size": 8,
+        "graph_cache": DEFAULT_GRAPH_CACHE,
+        "graph_cache_model_id": None,
+        "graph_cache_task_id": DEFAULT_GRAPH_CACHE_TASK_ID,
+        "graph_cache_artifact_name": DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
+    }
+    config = task.connect(default_config, name="General")
 
     def validate_file(path, label):
         if not path or not os.path.isfile(path):
@@ -103,47 +129,57 @@ def hpo_step(
         source_task = Task.get_task(task_id=task_id)
         selected_name = artifact_name
         if selected_name not in source_task.artifacts:
-            matches = [n for n in source_task.artifacts if artifact_name in n]
+            matches = [
+                name
+                for name in source_task.artifacts
+                if artifact_name in name
+            ]
             if matches:
                 selected_name = matches[0]
+
         if selected_name not in source_task.artifacts:
             available = ", ".join(source_task.artifacts.keys()) or "none"
-            raise KeyError(f"Artifact '{artifact_name}' not found. Available: {available}")
+            raise KeyError(
+                f"Artifact '{artifact_name}' not found in ClearML task {task_id}. "
+                f"Available artifacts: {available}"
+            )
+
         return validate_file(
             source_task.artifacts[selected_name].get_local_copy(),
             f"ClearML artifact {selected_name}",
         )
 
     def resolve_graph_cache_path():
-        if graph_cache_model_id:
-            model = InputModel(model_id=graph_cache_model_id)
-            return validate_file(model.get_local_copy(), f"ClearML model {graph_cache_model_id}")
-        if graph_cache_task_id:
-            return resolve_task_artifact(graph_cache_task_id, graph_cache_artifact_name)
-        if graph_cache and str(graph_cache).startswith("file://"):
-            return validate_file(file_url_to_path(graph_cache), "Graph cache")
-        return validate_file(graph_cache, "Graph cache")
+        if config.get("graph_cache_model_id"):
+            input_model = InputModel(model_id=config["graph_cache_model_id"])
+            return validate_file(
+                input_model.get_local_copy(),
+                f"ClearML model file {config['graph_cache_model_id']}",
+            )
 
-    class RawGraphDataset(torch.utils.data.Dataset):
-        def __init__(self, data):
-            self.data = data
-        def __len__(self):
-            return len(self.data)
-        def __getitem__(self, idx):
-            return self.data[idx]
+        if config.get("graph_cache_task_id"):
+            return resolve_task_artifact(
+                config["graph_cache_task_id"],
+                config["graph_cache_artifact_name"],
+            )
 
-    class GNNClassifier(nn.Module):
-        """GNN Risk Classifier - Direct 3-class prediction with CrossEntropyLoss."""
-        def __init__(self, hidden_dim=128, dropout=0.3):
+        cache_path = config["graph_cache"]
+        if cache_path and str(cache_path).startswith("file://"):
+            return validate_file(file_url_to_path(cache_path), "Graph cache")
+
+        return validate_file(cache_path, "Graph cache")
+
+    class SpatioTemporalModel(nn.Module):
+        def __init__(self, in_dim=5, hidden_dim=64, dropout=0.3):
             super().__init__()
-            self.gcn1 = GCNConv(5, hidden_dim)
+            self.gcn1 = GCNConv(in_dim, hidden_dim)
             self.gcn2 = GCNConv(hidden_dim, hidden_dim)
             self.dropout = nn.Dropout(dropout)
-            self.classifier = nn.Sequential(
+            self.risk_head = nn.Sequential(
                 nn.Linear(hidden_dim, 64),
                 nn.ReLU(),
                 nn.Dropout(dropout),
-                nn.Linear(64, 3),  # 3-class output
+                nn.Linear(64, 1),
             )
 
         def forward(self, graph):
@@ -151,295 +187,493 @@ def hpo_step(
             x = self.dropout(x)
             x = F.relu(self.gcn2(x, graph.edge_index))
             x = self.dropout(x)
-            graph_embedding = global_mean_pool(x, graph.batch)
-            logits = self.classifier(graph_embedding)
-            return logits
+            return self.risk_head(global_mean_pool(x, graph.batch))
+
+    class RawGraphDataset(torch.utils.data.Dataset):
+        def __init__(self, data):
+            self.data = data
+
+        def __len__(self):
+            return len(self.data)
+
+        def __getitem__(self, idx):
+            return self.data[idx]
+
+    class EvalGraphDataset(Dataset):
+        def __init__(self, data):
+            self.data = data
+
+        def __len__(self):
+            return len(self.data)
+
+        def __getitem__(self, idx):
+            sample = self.data[idx]
+            if len(sample) == 2:
+                graph, label = sample
+                return graph, label
+            if len(sample) == 3:
+                x, edge_index, label = sample
+                return Data(x=x, edge_index=edge_index), label
+            raise ValueError(f"Unknown graph sample format: {len(sample)}")
+
+    def risk_to_class(score, low_t, high_t):
+        if score < low_t:
+            return 0
+        if score < high_t:
+            return 1
+        return 2
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     graph_cache_path = resolve_graph_cache_path()
-    logger.report_text(f"Resolved graph cache: {graph_cache_path}")
+    print("Resolved graph cache:", graph_cache_path)
 
-    raw_data = torch.load(graph_cache_path, weights_only=False)
-    dataset = RawGraphDataset(raw_data)
-    total_size = len(dataset)
+    data = torch.load(graph_cache_path, weights_only=False)
+    raw_dataset = RawGraphDataset(data)
+    train_size = int(0.8 * len(raw_dataset))
+    train_set = Subset(raw_dataset, range(train_size))
+    train_loader = DataLoader(
+        train_set,
+        batch_size=config["batch_size"],
+        shuffle=True,
+    )
 
-    train_size = int((1 - val_split - test_split) * total_size)
-    val_size = int(val_split * total_size)
-    test_size = total_size - train_size - val_size
+    if len(train_loader) == 0:
+        raise RuntimeError("Training loader is empty. Check graph_cache contents.")
 
-    train_indices = list(range(train_size))
-    val_indices = list(range(train_size, train_size + val_size))
-    test_indices = list(range(train_size + val_size, total_size))
+    model = SpatioTemporalModel(
+        hidden_dim=config["hidden_dim"],
+        dropout=config["dropout"],
+    ).to(device)
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=config["lr"],
+        weight_decay=config["weight_decay"],
+    )
+    loss_fn = nn.MSELoss()
 
-    logger.report_text(f"Data Split: Train={len(train_indices)}, Val={len(val_indices)}, Test={len(test_indices)}")
+    best_loss = float("inf")
+    model_dir = os.path.join("models", "model_hyper_parameter_tuning")
+    os.makedirs(model_dir, exist_ok=True)
+    checkpoint_path = os.path.join(model_dir, f"risk_model_{task.id}.pt")
 
-    train_labels_raw = [dataset[i][1].item() for i in train_indices]
-    train_labels_raw = np.array(train_labels_raw)
-    low_threshold = np.percentile(train_labels_raw, 33)
-    high_threshold = np.percentile(train_labels_raw, 66)
+    for epoch in range(config["epochs"]):
+        model.train()
+        total_loss = 0.0
 
-    def score_to_class(score):
-        if score < low_threshold:
-            return 0
-        elif score < high_threshold:
-            return 1
-        else:
-            return 2
+        for batch, labels in train_loader:
+            batch = batch.to(device)
+            labels = labels.to(device).float().view(-1)
 
-    def create_labeled_dataset(indices):
-        labeled = []
-        for idx in indices:
-            graph, raw_score = dataset[idx]
-            class_label = score_to_class(raw_score)
-            labeled.append((graph, class_label))
-        return labeled
+            preds = model(batch).view(-1)
+            loss = loss_fn(preds, labels)
 
-    train_data = create_labeled_dataset(train_indices)
-    val_data = create_labeled_dataset(val_indices)
-    test_data = create_labeled_dataset(test_indices)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
 
-    # Define Search Space (Paper-level HPO with dropout scaling + batch size coupling)
-    local_search_space = [
-        # Small model, low LR
-        {"hidden_dim": 64,  "dropout": 0.1, "lr": 1e-3,  "batch_size": 32},
-        {"hidden_dim": 64,  "dropout": 0.15, "lr": 5e-4,  "batch_size": 16},
-        # Medium model, moderate LR
-        {"hidden_dim": 128, "dropout": 0.2, "lr": 5e-4,  "batch_size": 16},
-        {"hidden_dim": 128, "dropout": 0.3, "lr": 3e-4,  "batch_size": 32},
-        {"hidden_dim": 128, "dropout": 0.25, "lr": 1e-3,  "batch_size": 8},
-        # Large model, careful tuning
-        {"hidden_dim": 256, "dropout": 0.3, "lr": 3e-4,  "batch_size": 16},
-        {"hidden_dim": 256, "dropout": 0.4, "lr": 1e-4,  "batch_size": 32},
-        {"hidden_dim": 256, "dropout": 0.35, "lr": 5e-5,  "batch_size": 64},
-    ]
-    search_space = local_search_space[:n_trials]
+        avg_loss = total_loss / len(train_loader)
+        task.get_logger().report_scalar("train", "loss", float(avg_loss), epoch + 1)
+        task.get_logger().report_scalar("metrics", "accuracy", 0.0, epoch + 1)
+        print(f"Epoch {epoch + 1}/{config['epochs']} | Loss {avg_loss:.6f}")
 
-    logger.report_text(f"\nSearch Space ({len(search_space)} configs):")
-    for i, cfg in enumerate(search_space):
-        logger.report_text(f"  Config {i+1}: {cfg}")
-
-    best_val_f1 = -1
-    best_val_loss = float('inf')
-    best_cfg = None
-    best_model_state = None
-    trial_results = []
-
-    for trial_idx, cfg in enumerate(search_space):
-        logger.report_text(f"\n{'='*100}")
-        logger.report_text(f"TRIAL {trial_idx + 1}/{len(search_space)}: {cfg}")
-        logger.report_text(f"{'='*100}")
-
-        train_loader = DataLoader(train_data, batch_size=cfg["batch_size"], shuffle=True)
-        val_loader = DataLoader(val_data, batch_size=cfg["batch_size"], shuffle=False)
-
-        model = GNNClassifier(hidden_dim=cfg["hidden_dim"], dropout=cfg["dropout"]).to(device)
-        optimizer = torch.optim.Adam(model.parameters(), lr=cfg["lr"])
-        loss_fn = nn.CrossEntropyLoss()
-
-        best_val_f1_trial = -1
-        best_val_loss_trial = float('inf')
-        patience_counter = 0
-
-        for epoch in range(max_epochs_per_trial):
-            model.train()
-            train_loss = 0.0
-            for graph, label in train_loader:
-                graph = graph.to(device)
-                label = label.to(device)
-                logits = model(graph)
-                loss = loss_fn(logits, label)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                train_loss += loss.item()
-            train_loss /= len(train_loader)
-
-            model.eval()
-            val_preds, val_labels_true = [], []
-            val_loss = 0.0
-            with torch.no_grad():
-                for graph, label in val_loader:
-                    graph = graph.to(device)
-                    label = label.to(device)
-                    logits = model(graph)
-                    batch_loss = loss_fn(logits, label)
-                    val_loss += batch_loss.item()
-                    preds = logits.argmax(dim=1).cpu().numpy()
-                    val_preds.extend(preds)
-                    val_labels_true.extend(label.cpu().numpy())
-            
-            val_loss /= len(val_loader)
-            val_accuracy = accuracy_score(val_labels_true, val_preds)
-            _, _, val_f1, _ = precision_recall_fscore_support(
-                val_labels_true, val_preds, average="macro", zero_division=0
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            torch.save(
+                {
+                    "model_state_dict": model.state_dict(),
+                    "hidden_dim": config["hidden_dim"],
+                    "dropout": config["dropout"],
+                    "lr": config["lr"],
+                    "weight_decay": config["weight_decay"],
+                    "epochs": config["epochs"],
+                    "batch_size": config["batch_size"],
+                    "train_loss": best_loss,
+                },
+                checkpoint_path,
             )
 
-            print(f"[T{trial_idx+1}E{epoch+1:3d}] train_loss={train_loss:.4f} val_loss={val_loss:.4f} val_f1={val_f1:.4f}")
-
-            improved = False
-            if EARLY_STOPPING_METRIC == "val_loss":
-                improved = val_loss < best_val_loss_trial
-            elif EARLY_STOPPING_METRIC == "val_f1":
-                improved = val_f1 > best_val_f1_trial
-            else:
-                improved = (val_f1 > best_val_f1_trial) or (val_loss < best_val_loss_trial)
-            
-            if improved:
-                best_val_f1_trial = max(best_val_f1_trial, val_f1)
-                best_val_loss_trial = min(best_val_loss_trial, val_loss)
-                best_model_state = {k: v.cpu() for k, v in model.state_dict().items()}
-                patience_counter = 0
-            else:
-                patience_counter += 1
-                if patience_counter >= EARLY_STOPPING_PATIENCE:
-                    logger.report_text(f"Early stopping at epoch {epoch+1} (patience={EARLY_STOPPING_PATIENCE})")
-                    break
-
-        logger.report_text(f"Trial {trial_idx+1}: val_f1={best_val_f1_trial:.4f}, val_loss={best_val_loss_trial:.4f}, epochs={epoch+1}")
-        
-        trial_results.append({
-            "trial_id": trial_idx + 1,
-            "config": cfg,
-            "val_f1": best_val_f1_trial,
-            "val_loss": best_val_loss_trial,
-            "epochs": epoch + 1,
-        })
-
-        if best_val_f1_trial > best_val_f1:
-            best_val_f1 = best_val_f1_trial
-            best_val_loss = best_val_loss_trial
-            best_cfg = cfg
-            best_model_state_final = best_model_state
-
-    logger.report_text(f"\n{'='*100}")
-    logger.report_text("FINAL EVALUATION ON TEST SET")
-    logger.report_text(f"Best Config: {best_cfg}")
-    logger.report_text(f"{'='*100}")
-
-    final_model = GNNClassifier(hidden_dim=best_cfg["hidden_dim"], dropout=best_cfg["dropout"]).to(device)
-    final_model.load_state_dict(best_model_state_final)
-    final_model.eval()
-
-    test_preds, test_labels_true = [], []
-    with torch.no_grad():
-        test_loader = DataLoader(test_data, batch_size=best_cfg["batch_size"], shuffle=False)
-        for graph, label in test_loader:
-            graph = graph.to(device)
-            logits = final_model(graph)
-            preds = logits.argmax(dim=1).cpu().numpy()
-            test_preds.extend(preds)
-            test_labels_true.extend(label.numpy())
-
-    test_preds = np.array(test_preds)
-    test_labels_true = np.array(test_labels_true)
-
-    test_accuracy = accuracy_score(test_labels_true, test_preds)
-    test_precision, test_recall, test_f1, _ = precision_recall_fscore_support(
-        test_labels_true, test_preds, average="macro", zero_division=0
-    )
-    test_class_precisions, test_class_recalls, test_class_f1s, _ = precision_recall_fscore_support(
-        test_labels_true, test_preds, labels=[0, 1, 2], average=None, zero_division=0
+    eval_dataset = EvalGraphDataset(data)
+    test_set = Subset(
+        eval_dataset,
+        list(range(train_size, len(eval_dataset))),
     )
 
-    test_report = classification_report(
-        test_labels_true, test_preds, labels=[0, 1, 2],
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    eval_model = SpatioTemporalModel(
+        hidden_dim=checkpoint["hidden_dim"],
+        dropout=checkpoint["dropout"],
+    ).to(device)
+    eval_model.load_state_dict(checkpoint["model_state_dict"])
+    eval_model.eval()
+
+    train_scores = [
+        eval_dataset[i][1].item()
+        for i in range(train_size)
+    ]
+    low_t, high_t = np.percentile(train_scores, [33, 66])
+
+    y_true = []
+    y_pred = []
+    y_true_raw = []
+    y_pred_raw = []
+
+    for graph, label in test_set:
+        graph = graph.to(device)
+        with torch.no_grad():
+            pred_score = eval_model(graph).item()
+        y_true.append(risk_to_class(label.item(), low_t, high_t))
+        y_pred.append(risk_to_class(pred_score, low_t, high_t))
+        y_true_raw.append(label.item())
+        y_pred_raw.append(pred_score)
+
+    report = classification_report(
+        y_true,
+        y_pred,
+        labels=[0, 1, 2],
         target_names=["Low", "Medium", "High"],
-        digits=3, zero_division=0,
+        digits=3,
+        zero_division=0,
     )
 
-    logger.report_text(test_report)
-    logger.report_text(f"Test: Accuracy={test_accuracy:.4f}, Precision={test_precision:.4f}, Recall={test_recall:.4f}, F1={test_f1:.4f}")
+    y_true_raw = np.array(y_true_raw, dtype=float)
+    y_pred_raw = np.array(y_pred_raw, dtype=float)
+    _plot_evaluation_results = get_plot_evaluation_results(task)
+    result_metrics = _plot_evaluation_results(
+        y_true,
+        y_pred,
+        y_true_raw,
+        y_pred_raw,
+        ["Low", "Medium", "High"],
+        low_t,
+        high_t,
+        task,
+    )
 
-    plot_dir = os.path.join(os.getcwd(), "clearml_plots")
-    os.makedirs(plot_dir, exist_ok=True)
+    # Ensure result_metrics is valid
+    if result_metrics is None:
+        print("Error: _plot_evaluation_results returned None. Using default metrics.")
+        result_metrics = {
+            "accuracy": 0.0,
+            "macro_precision": 0.0,
+            "macro_recall": 0.0,
+            "macro_f1": 0.0,
+        }
 
-    cm = confusion_matrix(test_labels_true, test_preds, labels=[0, 1, 2])
-    fig, ax = plt.subplots(figsize=(8, 6))
-    im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
-    ax.figure.colorbar(im, ax=ax)
-    ax.set(xticks=np.arange(3), yticks=np.arange(3),
-           xticklabels=["Low", "Medium", "High"],
-           yticklabels=["Low", "Medium", "High"],
-           ylabel="True", xlabel="Predicted", title="Confusion Matrix (Test)")
-    thresh = cm.max() / 2.0
-    for i in range(3):
-        for j in range(3):
-            ax.text(j, i, format(cm[i, j], 'd'),
-                    ha="center", va="center",
-                    color="white" if cm[i, j] > thresh else "black", fontsize=12)
-    fig.tight_layout()
-    cm_path = os.path.join(plot_dir, "hpo_confusion_matrix.png")
-    fig.savefig(cm_path, dpi=150)
-    plt.close(fig)
-    logger.report_image("HPO_Results", "confusion_matrix", local_path=cm_path, iteration=0)
+    metric_iteration = int(config["epochs"]) + 1
+    task.get_logger().report_text(report)
+    task.get_logger().report_scalar(
+        "metrics",
+        "accuracy",
+        float(result_metrics["accuracy"]),
+        metric_iteration,
+    )
+    task.get_logger().report_scalar(
+        "metrics",
+        "macro_precision",
+        float(result_metrics["macro_precision"]),
+        metric_iteration,
+    )
+    task.get_logger().report_scalar(
+        "metrics",
+        "macro_recall",
+        float(result_metrics["macro_recall"]),
+        metric_iteration,
+    )
+    task.get_logger().report_scalar(
+        "metrics",
+        "macro_f1",
+        float(result_metrics["macro_f1"]),
+        metric_iteration,
+    )
 
-    x = np.arange(3)
-    width = 0.25
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(x - width, test_class_precisions, width, label="Precision", color="#4C72B0")
-    ax.bar(x, test_class_recalls, width, label="Recall", color="#55A868")
-    ax.bar(x + width, test_class_f1s, width, label="F1", color="#C44E52")
-    ax.set_title("Per-class Metrics (Test Set)", fontsize=14)
-    ax.set_xlabel("Risk Class"), ax.set_ylabel("Score")
-    ax.set_xticks(x), ax.set_xticklabels(["Low", "Medium", "High"])
-    ax.set_ylim(0, 1.05), ax.legend()
-    for i, (p, r, f) in enumerate(zip(test_class_precisions, test_class_recalls, test_class_f1s)):
-        ax.text(i - width, p + 0.02, f"{p:.3f}", ha="center", va="bottom", fontsize=9)
-        ax.text(i, r + 0.02, f"{r:.3f}", ha="center", va="bottom", fontsize=9)
-        ax.text(i + width, f + 0.02, f"{f:.3f}", ha="center", va="bottom", fontsize=9)
-    fig.tight_layout()
-    metrics_path = os.path.join(plot_dir, "hpo_metrics_bar.png")
-    fig.savefig(metrics_path, dpi=150)
-    plt.close(fig)
-    logger.report_image("HPO_Results", "metrics_bar", local_path=metrics_path, iteration=0)
+    print("\n===== HPO Trial Evaluation Result =====")
+    print(report)
+    print(f"Accuracy: {result_metrics['accuracy']:.3f}")
 
-    logger.report_text(f"\n{'='*100}")
-    logger.report_text("HPO RESULTS SUMMARY TABLE")
-    logger.report_text(f"{'='*100}")
-    logger.report_text(f"{'Trial':<8} {'Hidden':<10} {'Dropout':<10} {'LR':<12} {'BS':<6} {'Val F1':<10} {'Val Loss':<12} {'Epochs':<8}")
-    logger.report_text("-" * 100)
-    
-    sorted_results = sorted(trial_results, key=lambda x: x["val_f1"], reverse=True)
-    for i, result in enumerate(sorted_results):
-        cfg = result["config"]
-        rank = "best" if i == 0 else f" {i+1} "
-        logger.report_text(
-            f"{rank:<8} {cfg['hidden_dim']:<10} {cfg['dropout']:<10.2f} {cfg['lr']:<12.0e} "
-            f"{cfg['batch_size']:<6} {result['val_f1']:<10.4f} {result['val_loss']:<12.4f} {result['epochs']:<8}"
-        )
-    
-    logger.report_text("-" * 100)
-    logger.report_text(f"Best Config (by Val F1): Trial {[r['trial_id'] for r in sorted_results][0]}")
-    logger.report_text(f"Best Val F1: {sorted_results[0]['val_f1']:.4f}")
-    logger.report_text(f"Best Val Loss: {sorted_results[0]['val_loss']:.4f}")
-    logger.report_text(f"{'='*100}")
+    model_output = OutputModel(
+        task=task,
+        name="Risk_GNN_Model",
+        tags=["GNN", "risk", "hpo"],
+    )
+    model_output.update_weights(checkpoint_path)
+    model_output.set_metadata("accuracy", float(result_metrics["accuracy"]))
+    model_output.set_metadata("macro_f1", float(result_metrics["macro_f1"]))
+    print("Model registered:", model_output.id)
 
-    logger.report_text(f"\n{'='*100}")
-    logger.report_text("HPO COMPLETE - VERSION 2: PRODUCTION-LEVEL")
-    logger.report_text(f"{'='*100}")
+    task.flush(wait_for_uploads=True)
+    task.close()
+    return result_metrics["accuracy"]
 
-    return {
-        "best_config": best_cfg,
-        "val_f1": float(best_val_f1),
-        "test_f1": float(test_f1),
-        "test_accuracy": float(test_accuracy),
+
+def run_hyperparameter_optimization(base_task_id):
+    optimizer_task = Task.init(
+        project_name=PROJECT_NAME,
+        task_name=OPTIMIZER_TASK_NAME,
+        task_type=Task.TaskTypes.optimizer,
+        reuse_last_task_id=False,
+    )
+
+    print("\n===== HPO Config =====")
+    print("Execution Queue:", EXECUTION_QUEUE)
+    print(
+        "Make sure a ClearML agent is listening to this queue. "
+        f"For example: clearml-agent daemon --queue {EXECUTION_QUEUE}"
+    )
+    print("Base Task ID:", base_task_id)
+
+    optimizer = HyperParameterOptimizer(
+        base_task_id=base_task_id,
+        hyper_parameters=[
+            DiscreteParameterRange(
+                "General/hidden_dim",
+                values=[64, 128, 256],
+            ),
+            UniformParameterRange(
+                "General/dropout",
+                min_value=0.1,
+                max_value=0.5,
+                step_size=0.05,
+            ),
+            UniformParameterRange(
+                "General/lr",
+                min_value=0.0001,
+                max_value=0.003,
+                step_size=0.0001,
+            ),
+            UniformParameterRange(
+                "General/weight_decay",
+                min_value=0.00001,
+                max_value=0.001,
+                step_size=0.00001,
+            ),
+            UniformIntegerParameterRange(
+                "General/epochs",
+                min_value=5,
+                max_value=30,
+                step_size=5,
+            ),
+            DiscreteParameterRange(
+                "General/batch_size",
+                values=[8, 16, 32],
+            ),
+        ],
+        objective_metric_title="metrics",
+        objective_metric_series="accuracy",
+        objective_metric_sign="max",
+        optimizer_class=OptimizerOptuna,
+        execution_queue=EXECUTION_QUEUE,
+        max_number_of_concurrent_tasks=MAX_CONCURRENT_TASKS,
+        total_max_jobs=TOTAL_MAX_JOBS,
+        min_iteration_per_job=MIN_ITERATION_PER_JOB,
+        max_iteration_per_job=MAX_ITERATION_PER_JOB,
+    )
+
+    optimizer.set_report_period(HPO_REPORT_PERIOD_MINUTES)
+
+    print("\n===== HPO Started =====")
+    print("Optimizer Task ID:", optimizer_task.id)
+
+    optimizer.start()
+    optimizer.wait()
+
+    top_experiments = optimizer.get_top_experiments(top_k=REPORT_TOP_EXPERIMENTS)
+
+    print("\n===== Top Experiments =====")
+    for rank, exp in enumerate(top_experiments, start=1):
+        print(f"Top {rank}: task_id={exp.id}, name={exp.name}")
+
+    if top_experiments:
+        best_task = top_experiments[0]
+        print("\n===== Best Task =====")
+        print("Best Task ID:", best_task.id)
+        print("Best Task Name:", best_task.name)
+
+    optimizer.stop()
+    optimizer_task.close()
+
+
+def create_hpo_template_task(
+    graph_cache=DEFAULT_GRAPH_CACHE,
+    graph_cache_model_id=None,
+    graph_cache_task_id=DEFAULT_GRAPH_CACHE_TASK_ID,
+    graph_cache_artifact_name=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
+    hidden_dim=128,
+    dropout=0.3,
+    lr=5e-4,
+    weight_decay=1e-4,
+    epochs=10,
+    batch_size=8,
+):
+    task = Task.init(
+        project_name=PROJECT_NAME,
+        task_name=BASE_TASK_NAME,
+        reuse_last_task_id=False,
+    )
+
+    config = {
+        "run_mode": RUN_MODE_TRIAL,
+        "hidden_dim": hidden_dim,
+        "dropout": dropout,
+        "lr": lr,
+        "weight_decay": weight_decay,
+        "epochs": epochs,
+        "batch_size": batch_size,
+        "graph_cache": graph_cache,
+        "graph_cache_model_id": graph_cache_model_id,
+        "graph_cache_task_id": graph_cache_task_id,
+        "graph_cache_artifact_name": graph_cache_artifact_name,
     }
+    task.connect(config, name="General")
+
+    utils_dir = os.path.join(SCRIPT_DIR, "utils")
+    if os.path.isdir(utils_dir):
+        try:
+            task.upload_artifact("utils", utils_dir)
+        except Exception:
+            pass
+
+    task.close()
+    return task.id
+
+
+def run_gnn_hyper_parameter_tuning(
+    graph_cache=DEFAULT_GRAPH_CACHE,
+    graph_cache_model_id=None,
+    graph_cache_task_id=DEFAULT_GRAPH_CACHE_TASK_ID,
+    graph_cache_artifact_name=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
+    hidden_dim=128,
+    dropout=0.3,
+    lr=5e-4,
+    weight_decay=1e-4,
+    epochs=10,
+    batch_size=8,
+):
+    base_task_id = create_hpo_template_task(
+        graph_cache=graph_cache,
+        graph_cache_model_id=graph_cache_model_id,
+        graph_cache_task_id=graph_cache_task_id,
+        graph_cache_artifact_name=graph_cache_artifact_name,
+        hidden_dim=hidden_dim,
+        dropout=dropout,
+        lr=lr,
+        weight_decay=weight_decay,
+        epochs=epochs,
+        batch_size=batch_size,
+    )
+    print("\nBase template task created:", base_task_id)
+    run_hyperparameter_optimization(base_task_id)
+    return base_task_id
+
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        description="Run ClearML GNN hyperparameter tuning and evaluation with optional CLI overrides."
+    )
+    parser.add_argument(
+        "--graph_cache",
+        default=DEFAULT_GRAPH_CACHE,
+        help="Local graph cache path.",
+    )
+    parser.add_argument(
+        "--graph_cache_task_id",
+        default=DEFAULT_GRAPH_CACHE_TASK_ID,
+        help="ClearML task id for graph cache artifact.",
+    )
+    parser.add_argument(
+        "--graph_cache_artifact_name",
+        default=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
+        help="Artifact name for graph cache in ClearML task.",
+    )
+    parser.add_argument(
+        "--graph_cache_model_id",
+        default=None,
+        help="ClearML model id for graph cache model.",
+    )
+    parser.add_argument(
+        "--hidden_dim",
+        type=int,
+        default=128,
+        help="Hidden dimension size for the GNN.",
+    )
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=0.3,
+        help="Dropout rate for the GNN.",
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=5e-4,
+        help="Learning rate for optimizer.",
+    )
+    parser.add_argument(
+        "--weight_decay",
+        type=float,
+        default=1e-4,
+        help="Weight decay for optimizer.",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=10,
+        help="Number of training epochs.",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=8,
+        help="Training batch size.",
+    )
+    parser.add_argument(
+        "--run_mode",
+        choices=[RUN_MODE_CONTROLLER, RUN_MODE_TRIAL],
+        default=RUN_MODE_CONTROLLER,
+        help="Run mode: controller to start HPO, trial to run a trial from current task.",
+    )
+    parser.add_argument(
+        "--state_file",
+        type=str,
+        default=None,
+        help="State file to read pipeline parameters from.",
+    )
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
-    Task.init(project_name="HPO_Pipeline_3", task_name="GNN_HPO", reuse_last_task_id=False)
-    result = hpo_step(
-        graph_cache="graph_cache.pt",
-        graph_cache_model_id=None,
-        graph_cache_task_id="e42c8c37d17a402384607e9308e5a53e",
-        graph_cache_artifact_name="graph_cache",
-        n_trials=3,
-        max_epochs_per_trial=2,
-        val_split=0.15,
-        test_split=0.15,
-    )
-    print(f"\n{'='*100}")
-    print("HPO RESULT:")
-    for key, value in result.items():
-        print(f"  {key}: {value}")
-    print(f"{'='*100}")
+    args = get_args()
+    
+    if args.state_file and os.path.exists(args.state_file):
+        import json
+        with open(args.state_file, "r") as f:
+            state = json.load(f)
+        if "graph_cache_path" in state:
+            args.graph_cache = state["graph_cache_path"]
+            print(f"[*] Read graph_cache from state file: {args.graph_cache}")
+    
+    current_task = Task.current_task()
+    if current_task is not None:
+        runtime_config = current_task.connect(
+            {"run_mode": args.run_mode},
+            name="General",
+        )
+        args.run_mode = runtime_config.get("run_mode", args.run_mode)
+
+    if args.run_mode == RUN_MODE_TRIAL:
+        run_trial_from_current_task()
+    else:
+        base_task_id = create_hpo_template_task(
+            graph_cache=args.graph_cache,
+            graph_cache_model_id=args.graph_cache_model_id,
+            graph_cache_task_id=args.graph_cache_task_id,
+            graph_cache_artifact_name=args.graph_cache_artifact_name,
+            hidden_dim=args.hidden_dim,
+            dropout=args.dropout,
+            lr=args.lr,
+            weight_decay=args.weight_decay,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+        )
+        print("\nBase template task created:", base_task_id)
+        run_hyperparameter_optimization(base_task_id)

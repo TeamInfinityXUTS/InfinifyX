@@ -28,7 +28,7 @@ def get_args():
         default="local",
         help="Run mode: local (in-process) or remote (enqueue to ClearML queue).",
     )
-    parser.add_argument("--queue", default="Yolov8_training_v0.1", help="ClearML queue name for remote execution.")
+    parser.add_argument("--queue", default="data_engineer", help="ClearML queue name for remote execution.")
     parser.add_argument("--graph_cache", default=DEFAULT_GRAPH_CACHE, help="Local graph cache path.")
     parser.add_argument("--graph_cache_task_id", default=DEFAULT_GRAPH_CACHE_TASK_ID, help="ClearML task id for graph cache artifact.")
     parser.add_argument("--graph_cache_artifact_name", default=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME, help="Artifact name for graph cache in ClearML task.")
