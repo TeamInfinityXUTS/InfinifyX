@@ -793,23 +793,50 @@ if __name__ == "__main__":
 
     clearml_task_id = os.environ.get('CLEARML_TASK_ID')
 
+    # ── Known workspace roots ─────────────────────────────────────────────
+    # The ClearML agent clones the repo to a cache dir (C: drive) which lacks
+    # the dataset and model weights (gitignored). We search multiple locations
+    # to find the actual files on the machine.
+    KNOWN_WORKSPACES = [
+        os.environ.get("INFINIFYX_PROJECT_ROOT", ""),             # explicit env override (highest priority)
+        os.path.abspath(os.path.join(current_dir, "..", "..")),   # relative to script file
+        os.getcwd(),                                              # agent clone dir
+        # Common dev workspace path (university project):
+        r"D:\UTS\2026Autumn\42174 Artificial Intelligence Studio\Infinity\InfinifyX",
+    ]
+
+    def _find_path(rel_path: str) -> str:
+        """Return the first existing absolute path for rel_path across KNOWN_WORKSPACES."""
+        for root in KNOWN_WORKSPACES:
+            if not root:
+                continue
+            candidate = os.path.join(root, rel_path)
+            if os.path.exists(candidate):
+                print(f"  [resolve] {rel_path} → {candidate}")
+                return candidate
+        # Fallback: return relative to cwd
+        fallback = os.path.join(os.getcwd(), rel_path)
+        print(f"  [resolve] {rel_path} → {fallback}  (⚠ NOT FOUND in any workspace)")
+        return fallback
+
     if clearml_task_id:
         # ── Agent / CI mode ──────────────────────────────────────────────
-        # Running inside a ClearML agent (triggered by CI or ClearML UI).
-        # Read parameters from the task and use the repo root as project_root.
         print(f"[*] Agent mode. Task ID: {clearml_task_id}")
         task = _Task.init(continue_last_task=clearml_task_id)
         params = task.get_parameters().get("General", {})
 
-        # Resolve project root from the cloned repo working directory
         project_root = os.getcwd()
-        dataset_path  = params.get("dataset_path",
-                        os.path.join(project_root, "data_preprocessing", "datasets", "bdd100k"))
-        if not os.path.isabs(dataset_path):
-            abs_path = os.path.join(project_root, dataset_path)
-            dataset_path = abs_path if os.path.exists(abs_path) else os.path.abspath(dataset_path)
 
-        yolo_weight   = os.path.join(project_root, "models", "yolo", "Yolov8_best.pt")
+        # Dataset: search known workspaces for the actual data
+        dataset_rel = params.get("dataset_path", "data_preprocessing/datasets/bdd100k")
+        if os.path.isabs(dataset_rel) and os.path.exists(dataset_rel):
+            dataset_path = dataset_rel
+        else:
+            dataset_path = _find_path(dataset_rel)
+
+        # YOLO weight: search known workspaces
+        yolo_weight = _find_path(os.path.join("models", "yolo", "Yolov8_best.pt"))
+
         subset_pct    = float(params.get("subset_percentage", 0.1))
         yolo_ep       = int(params.get("yolo_epochs", 1))
         gnn_ep        = int(params.get("gnn_epochs", 1))
