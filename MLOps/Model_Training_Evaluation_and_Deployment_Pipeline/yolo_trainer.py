@@ -153,13 +153,13 @@ class YOLOTrainer:
         else:
             self.model = YOLO(self.yaml)
 
-    def train(self, data_yaml, name="exp"):
+    def train(self, data_yaml, name="exp", epochs=10):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         project_dir = "runs/YOLOv8_BDD100K_detect"
         results = self.model.train(
             data=data_yaml,
         
-            epochs=10,
+            epochs=epochs,
             imgsz=960,
             batch=8,
         

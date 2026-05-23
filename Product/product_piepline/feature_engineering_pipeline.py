@@ -291,28 +291,26 @@ def feature_engineering_pipeline(
 # 4. Execution Entry Point
 # ==========================================
 if __name__ == "__main__":
+    import argparse
     project_root = os.path.abspath(os.path.join(current_dir, '..', '..'))
 
-    yolo_weight = os.path.join(project_root, "models", "yolo", "Yolov8_best.pt")
-    yolo_cache  = os.path.join(project_root, "models", "yolo", "yolo_cache_train.pt")
-
-    # Option A — quick test (698 images):
-    #   data_preprocessing/datasets/bdd100k_subset_yolo/images/train/
-    # Option B — full run (~70 000 images, takes several hours):
-    #   data_preprocessing/datasets/bdd100k/train/images/
-    data_dir = os.path.join(
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--yolo_weight", default=os.path.join(project_root, "models", "yolo", "Yolov8_best.pt"))
+    parser.add_argument("--yolo_cache", default=os.path.join(project_root, "models", "yolo", "yolo_cache_train.pt"))
+    parser.add_argument("--data_dir", default=os.path.join(
         project_root, "data_preprocessing", "datasets",
-        "bdd100k_subset_yolo", "images", "train",
-    )
+        "bdd100k_subset_yolo", "images", "train"
+    ))
+    args = parser.parse_args()
 
     print(f"[*] Project root  : {project_root}")
-    print(f"[*] YOLO weight   : {yolo_weight}")
-    print(f"[*] YOLO cache    : {yolo_cache}")
-    print(f"[*] Data directory: {data_dir}")
+    print(f"[*] YOLO weight   : {args.yolo_weight}")
+    print(f"[*] YOLO cache    : {args.yolo_cache}")
+    print(f"[*] Data directory: {args.data_dir}")
 
-    for label, path in [("YOLO weight", yolo_weight),
-                         ("YOLO cache",  yolo_cache),
-                         ("Data dir",    data_dir)]:
+    for label, path in [("YOLO weight", args.yolo_weight),
+                         ("YOLO cache",  args.yolo_cache),
+                         ("Data dir",    args.data_dir)]:
         print(f"    [{'OK' if os.path.exists(path) else 'NOT FOUND'}] {label}: {path}")
 
     # Run pipeline controller locally — individual steps still dispatch to
@@ -320,7 +318,7 @@ if __name__ == "__main__":
     PipelineDecorator.run_locally()
 
     feature_engineering_pipeline(
-        yolo_weight_path=yolo_weight,
-        yolo_cache_path=yolo_cache,
-        data_dir=data_dir,
+        yolo_weight_path=args.yolo_weight,
+        yolo_cache_path=args.yolo_cache,
+        data_dir=args.data_dir,
     )

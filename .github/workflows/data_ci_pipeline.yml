@@ -44,14 +44,14 @@ jobs:
         # Create a task that tells the agent to:
         #   1. Clone this Git repo
         #   2. Checkout this branch
-        #   3. Run the end-to-end pipeline script
+        #   3. Run the ci_runner script sequentially
         task = Task.create(
             project_name="MLOps_Product_Assisted_Driving",
-            task_name="[CI Trigger] End-to-End Pipeline",
+            task_name="[CI Trigger] Sequential Pipeline",
             task_type=Task.TaskTypes.training,
             repo="https://github.com/TeamInfinityXUTS/InfinifyX.git",
             branch=os.environ.get("GITHUB_REF_NAME", "main"),
-            script="Product/product_piepline/end_to_end_pipeline.py",
+            script="scripts/ci_runner.py",
         )
 
         # Override pipeline parameters (CI uses small subset for speed)
@@ -68,4 +68,3 @@ jobs:
         print(f"[CI] End-to-End Pipeline enqueued! Task ID: {task.id}")
         print(f"[CI] Your data_engineer agent will clone the repo and run the pipeline.")
         EOF
-
