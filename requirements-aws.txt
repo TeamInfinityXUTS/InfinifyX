@@ -56,3 +56,5 @@ matplotlib               # Risk score distribution plots (Risk_pipeline.py)
 
 # ── Augmentation (MLOps DataProcessing) ─────────────────────
 albumentations==1.4.12   # 锁死版本：数据增强库，此版本不会强行拉取 NumPy 2.x
+
+clearml-agent
