@@ -37,6 +37,10 @@ if __name__ == "__main__":
     
     print(f"Parameters: dataset_path={dataset_path}, subset_percentage={subset_percentage}, yolo_epochs={yolo_epochs}, gnn_epochs={gnn_epochs}, hpo_trials={hpo_trials}, multi_epochs={multi_epochs}")
     
+    # Detach from the CI Trigger task so that each pipeline creates its own Clean Task
+    if "CLEARML_TASK_ID" in os.environ:
+        del os.environ["CLEARML_TASK_ID"]
+
     # 1. Data Processing
     run_step(f"python Product/product_piepline/data_processing_pipeline.py --dataset_path \"{dataset_path}\" --subset_percentage {subset_percentage}")
     
