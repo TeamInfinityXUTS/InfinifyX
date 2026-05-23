@@ -789,6 +789,7 @@ def end_to_end_pipeline(
 # EXECUTION ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
+    print("[end_to_end_pipeline] Starting...")
     from clearml import Task as _Task
 
     clearml_task_id = os.environ.get('CLEARML_TASK_ID')
