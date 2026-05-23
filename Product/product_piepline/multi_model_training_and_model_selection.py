@@ -1,12 +1,60 @@
+import argparse
 from clearml import PipelineDecorator, Task
+
+from utils.evaluation_utils import _plot_evaluation_results
 
 
 PROJECT_NAME = "MLOps_Product_Assisted_Driving"
-EXECUTION_QUEUE = "data_engineer"
+EXECUTION_QUEUE = "Yolov8_training_v0.1"
 
 DEFAULT_GRAPH_CACHE = "graph_cache.pt"
-DEFAULT_GRAPH_CACHE_TASK_ID = ""
+DEFAULT_GRAPH_CACHE_TASK_ID = "cc75418e3fd94e0f8d7c78a0e2b2f8e9"
 DEFAULT_GRAPH_CACHE_ARTIFACT_NAME = "graph_cache"
+
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        description="Run multi-model GNN training, evaluation and selection with CLI overrides."
+    )
+    parser.add_argument(
+        "--graph_cache",
+        default=DEFAULT_GRAPH_CACHE,
+        help="Local graph cache path.",
+    )
+    parser.add_argument(
+        "--graph_cache_task_id",
+        default=DEFAULT_GRAPH_CACHE_TASK_ID,
+        help="ClearML task id for graph cache artifact.",
+    )
+    parser.add_argument(
+        "--graph_cache_artifact_name",
+        default=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
+        help="Artifact name for graph cache in ClearML task.",
+    )
+    parser.add_argument(
+        "--graph_cache_model_id",
+        default=None,
+        help="ClearML model id for graph cache model.",
+    )
+    parser.add_argument(
+        "--run_mode",
+        choices=["local", "remote"],
+        default="local",
+        help="Run mode: local or remote pipeline execution.",
+    )
+    parser.add_argument(
+        "--queue",
+        default=EXECUTION_QUEUE,
+        help="ClearML queue name for remote execution.",
+    )
+
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=None,
+        help="Override epochs for all GNN models.",
+    )
+    return parser.parse_args()
 
 
 GNN_MODEL_CONFIGS = [
@@ -50,7 +98,7 @@ GNN_MODEL_CONFIGS = [
 ]
 
 
-@PipelineDecorator.component(execution_queue="data_engineer")
+@PipelineDecorator.component(execution_queue=args.queue)
 def train_evaluate_register_single_model(
     config,
     graph_cache=None,
@@ -89,7 +137,10 @@ def train_evaluate_register_single_model(
     )
     config = task.connect(config, name="ModelConfig")
     graph_cache = graph_cache or "graph_cache.pt"
-    graph_cache_task_id = graph_cache_task_id or ""
+    graph_cache_task_id = (
+        graph_cache_task_id
+        or "cc75418e3fd94e0f8d7c78a0e2b2f8e9"
+    )
     graph_cache_artifact_name = graph_cache_artifact_name or "graph_cache"
 
     def validate_file(path, label):
@@ -148,6 +199,217 @@ def train_evaluate_register_single_model(
             return validate_file(file_url_to_path(graph_cache), "Graph cache")
 
         return validate_file(graph_cache, "Graph cache")
+    
+    def _ensure_plot_dir():
+        import os
+
+        output_dir = os.path.join(os.getcwd(), "clearml_plots")
+        os.makedirs(output_dir, exist_ok=True)
+        return output_dir
+
+
+    def _save_confusion_matrix(cm, labels, path):
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        fig, ax = plt.subplots(figsize=(8, 6), constrained_layout=True)
+        im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+        ax.figure.colorbar(im, ax=ax)
+        ax.set(
+            xticks=np.arange(len(labels)),
+            yticks=np.arange(len(labels)),
+            xticklabels=labels,
+            yticklabels=labels,
+            title="GNN Evaluation Confusion Matrix",
+            ylabel="True label",
+            xlabel="Predicted label",
+        )
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+
+        fmt = "d"
+        thresh = cm.max() / 2.0
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                ax.text(
+                    j,
+                    i,
+                    format(cm[i, j], fmt),
+                    ha="center",
+                    va="center",
+                    color="white" if cm[i, j] > thresh else "black",
+                )
+
+        ax.set_title("GNN Evaluation Confusion Matrix", fontsize=14)
+        ax.tick_params(axis="x", labelsize=10, rotation=45)
+        ax.tick_params(axis="y", labelsize=10)
+        fig.savefig(path, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+
+
+    def _save_class_metrics_bar(precision_vals, recall_vals, f1_vals, labels, path):
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        x = np.arange(len(labels))
+        width = 0.25
+        fig, ax = plt.subplots(figsize=(10, 6), constrained_layout=True)
+        ax.bar(x - width, precision_vals, width, label="Precision", color="#4C72B0")
+        ax.bar(x, recall_vals, width, label="Recall", color="#55A868")
+        ax.bar(x + width, f1_vals, width, label="F1", color="#C44E52")
+        ax.set_title("Per-class Precision / Recall / F1")
+        ax.set_xlabel("Risk group")
+        ax.set_ylabel("Score")
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels)
+        ax.set_ylim(0, 1.05)
+        ax.legend()
+        for i, (p, r, f) in enumerate(zip(precision_vals, recall_vals, f1_vals)):
+            ax.text(i - width, p + 0.02, f"{p:.3f}", ha="center", va="bottom")
+            ax.text(i, r + 0.02, f"{r:.3f}", ha="center", va="bottom")
+            ax.text(i + width, f + 0.02, f"{f:.3f}", ha="center", va="bottom")
+        ax.set_title("Per-class Precision / Recall / F1", fontsize=14)
+        ax.tick_params(axis="x", labelsize=11)
+        ax.tick_params(axis="y", labelsize=11)
+        fig.savefig(path, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+
+
+    def _save_risk_score_histogram(y_true_vals, y_pred_vals, path):
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(9, 5), constrained_layout=True)
+        ax.hist(y_true_vals, bins=20, alpha=0.5, label="True risk", color="#1f77b4")
+        ax.hist(y_pred_vals, bins=20, alpha=0.5, label="Predicted risk", color="#55a868")
+        ax.set_title("Risk Score Distribution")
+        ax.set_xlabel("Risk score")
+        ax.set_ylabel("Count")
+        ax.legend()
+        ax.set_title("Risk Score Distribution", fontsize=14)
+        ax.tick_params(axis="x", labelsize=11)
+        ax.tick_params(axis="y", labelsize=11)
+        fig.savefig(path, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+
+
+    def _save_risk_calibration_curve(y_true_vals, y_pred_vals, path, n_bins=10):
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        bins = np.linspace(
+            min(y_pred_vals.min(), y_true_vals.min()),
+            max(y_pred_vals.max(), y_true_vals.max()),
+            n_bins + 1,
+        )
+        digitized = np.digitize(y_pred_vals, bins) - 1
+        mean_pred = []
+        mean_true = []
+        for i in range(n_bins):
+            mask = digitized == i
+            if not np.any(mask):
+                continue
+            mean_pred.append(y_pred_vals[mask].mean())
+            mean_true.append(y_true_vals[mask].mean())
+
+        fig, ax = plt.subplots(figsize=(9, 6), constrained_layout=True)
+        ax.plot(mean_pred, mean_true, marker="o", label="Calibration")
+        ax.plot([bins[0], bins[-1]], [bins[0], bins[-1]], linestyle="--", color="gray", label="Ideal")
+        ax.set_title("Risk Calibration Curve")
+        ax.set_xlabel("Mean predicted risk")
+        ax.set_ylabel("Mean true risk")
+        ax.legend()
+        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.set_title("Risk Calibration Curve", fontsize=14)
+        ax.tick_params(axis="x", labelsize=11)
+        ax.tick_params(axis="y", labelsize=11)
+        fig.savefig(path, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+
+
+    def _save_class_error_bars(error_dict, path):
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        labels = list(error_dict.keys())
+        mae_vals = [error_dict[k]["mae"] for k in labels]
+        rmse_vals = [error_dict[k]["rmse"] for k in labels]
+        x = np.arange(len(labels))
+        width = 0.35
+        fig, ax = plt.subplots(figsize=(9, 5), constrained_layout=True)
+        ax.bar(x - width / 2, mae_vals, width, label="MAE", color="#4C72B0")
+        ax.bar(x + width / 2, rmse_vals, width, label="RMSE", color="#55A868")
+        ax.set_title("Risk Group MAE / RMSE")
+        ax.set_xlabel("Risk group")
+        ax.set_ylabel("Error")
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels)
+        ax.legend()
+        for i, (mae_val, rmse_val) in enumerate(zip(mae_vals, rmse_vals)):
+            ax.text(i - width / 2, mae_val + 0.01, f"{mae_val:.3f}", ha="center", va="bottom")
+            ax.text(i + width / 2, rmse_val + 0.01, f"{rmse_val:.3f}", ha="center", va="bottom")
+        ax.set_title("Risk Group MAE / RMSE", fontsize=13)
+        ax.tick_params(axis="x", labelsize=11)
+        ax.tick_params(axis="y", labelsize=11)
+        fig.savefig(path, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+
+
+    def _save_precision_recall_threshold_plots(y_true_vals, y_score_vals, labels, path):
+        import matplotlib.pyplot as plt
+        from sklearn.metrics import precision_recall_curve
+        from sklearn.preprocessing import label_binarize
+
+        y_true_bin = label_binarize(y_true_vals, classes=[0, 1, 2])
+        fig, ax = plt.subplots(figsize=(10, 7), constrained_layout=True)
+        for i, label_name in enumerate(labels):
+            precision_curve, recall_curve, thresholds = precision_recall_curve(
+                y_true_bin[:, i], y_score_vals[:, i]
+            )
+            if len(thresholds) == 0:
+                continue
+            ax.plot(thresholds, precision_curve[:-1], lw=2, label=f"{label_name} Precision")
+            ax.plot(thresholds, recall_curve[:-1], lw=2, linestyle="--", label=f"{label_name} Recall")
+        ax.set_title("Precision and Recall vs Threshold")
+        ax.set_xlabel("Decision Threshold")
+        ax.set_ylabel("Score")
+        ax.set_ylim(0, 1.05)
+        ax.legend(loc="best")
+        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.set_title("Precision and Recall vs Threshold", fontsize=14)
+        ax.tick_params(axis="x", labelsize=11)
+        ax.tick_params(axis="y", labelsize=11)
+        fig.savefig(path, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+
+
+    def _save_one_vs_rest_confusion_matrices(y_true_vals, y_pred_vals, labels, path):
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from sklearn.metrics import confusion_matrix
+
+        fig, axes = plt.subplots(1, len(labels), figsize=(len(labels) * 5, 5), constrained_layout=True)
+        if len(labels) == 1:
+            axes = [axes]
+        for i, label_name in enumerate(labels):
+            y_true_bin = [1 if y == i else 0 for y in y_true_vals]
+            y_pred_bin = [1 if y == i else 0 for y in y_pred_vals]
+            cm = confusion_matrix(y_true_bin, y_pred_bin, labels=[0, 1])
+            ax = axes[i]
+            im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+            ax.set_title(f"{label_name} One-vs-Rest")
+            ax.set_xlabel("Predicted")
+            ax.set_ylabel("True")
+            ax.set_xticks([0, 1])
+            ax.set_yticks([0, 1])
+            ax.set_xticklabels([f"Not {label_name}", label_name], rotation=45, ha="right")
+            ax.set_yticklabels([f"Not {label_name}", label_name])
+            for j in range(cm.shape[0]):
+                for k in range(cm.shape[1]):
+                    ax.text(k, j, cm[j, k], ha="center", va="center",
+                            color="white" if cm[j, k] > cm.max() / 2 else "black")
+        fig.colorbar(im, ax=axes, orientation="vertical", fraction=0.02, pad=0.04)
+        fig.savefig(path, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+
 
     class RawGraphDataset(torch.utils.data.Dataset):
         def __init__(self, data):
@@ -283,7 +545,9 @@ def train_evaluate_register_single_model(
     loss_fn = nn.MSELoss()
 
     best_loss = float("inf")
-    model_path = f"{config['name']}_{task.id}.pt"
+    model_dir = os.path.join("models", "multi_model_training_and_model_selection")
+    os.makedirs(model_dir, exist_ok=True)
+    model_path = os.path.join(model_dir, f"{config['name']}_{task.id}.pt")
 
     for epoch in range(config["epochs"]):
         model.train()
@@ -346,6 +610,8 @@ def train_evaluate_register_single_model(
 
     y_true = []
     y_pred = []
+    y_true_raw = []
+    y_pred_raw = []
 
     for graph, label in test_set:
         graph = graph.to(device)
@@ -353,6 +619,19 @@ def train_evaluate_register_single_model(
             pred_score = eval_model(graph).item()
         y_true.append(risk_to_class(label.item(), low_t, high_t))
         y_pred.append(risk_to_class(pred_score, low_t, high_t))
+        y_true_raw.append(label.item())
+        y_pred_raw.append(pred_score)
+
+    result_metrics = _plot_evaluation_results(
+        y_true,
+        y_pred,
+        y_true_raw,
+        y_pred_raw,
+        ["Low", "Medium", "High"],
+        low_t,
+        high_t,
+        task,
+    )
 
     report = classification_report(
         y_true,
@@ -362,13 +641,10 @@ def train_evaluate_register_single_model(
         digits=3,
         zero_division=0,
     )
-    accuracy = accuracy_score(y_true, y_pred)
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        y_true,
-        y_pred,
-        average="macro",
-        zero_division=0,
-    )
+    accuracy = result_metrics["accuracy"]
+    precision = result_metrics["macro_precision"]
+    recall = result_metrics["macro_recall"]
+    f1 = result_metrics["macro_f1"]
 
     metric_iteration = int(config["epochs"])
     task.get_logger().report_text(report)
@@ -403,7 +679,7 @@ def train_evaluate_register_single_model(
     }
 
 
-@PipelineDecorator.component(execution_queue="data_engineer")
+@PipelineDecorator.component()
 def select_best_model(results, score_key="score"):
     from clearml import Task
 
@@ -417,7 +693,28 @@ def select_best_model(results, score_key="score"):
     for result in results:
         print(result)
 
-    best = max(results, key=lambda item: float(item.get(score_key, 0.0)))
+    def safe_score(item):
+        if not isinstance(item, dict):
+            return -1e9
+    
+        val = item.get(score_key, None)
+        if val is None:
+            return -1e9
+    
+        try:
+            val = float(val)
+            if not np.isfinite(val):
+                return -1e9
+            return val
+        except:
+            return -1e9
+
+    clean_results = [
+        r for r in results
+        if r is not None and score_key in r
+    ]
+
+    best = max(clean_results, key=safe_score)
     task.get_logger().report_text(f"Best model: {best}")
     task.set_parameter("best_model_name", best["model_name"])
     task.set_parameter("best_architecture", best["architecture"])
@@ -442,7 +739,7 @@ def select_best_model(results, score_key="score"):
 def gnn_multi_model_training_selection_pipeline(
     graph_cache="graph_cache.pt",
     graph_cache_model_id=None,
-    graph_cache_task_id="",
+    graph_cache_task_id="cc75418e3fd94e0f8d7c78a0e2b2f8e9",
     graph_cache_artifact_name="graph_cache",
 ):
     results = []
@@ -461,6 +758,22 @@ def gnn_multi_model_training_selection_pipeline(
 
 
 if __name__ == "__main__":
-    PipelineDecorator.run_locally()
-    result = gnn_multi_model_training_selection_pipeline()
+    args = get_args()
+
+    if args.epochs is not None:
+        for cfg in GNN_MODEL_CONFIGS:
+            cfg["epochs"] = args.epochs
+
+    if args.run_mode == "remote":
+        PipelineDecorator.run_remotely(queue=args.queue)
+    else:
+        PipelineDecorator.run_locally()
+
+    result = gnn_multi_model_training_selection_pipeline(
+        graph_cache=args.graph_cache,
+        graph_cache_model_id=args.graph_cache_model_id,
+        graph_cache_task_id=args.graph_cache_task_id,
+        graph_cache_artifact_name=args.graph_cache_artifact_name,
+    )
+
     print("Best GNN result:", result)
