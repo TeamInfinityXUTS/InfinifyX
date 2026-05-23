@@ -801,8 +801,9 @@ if __name__ == "__main__":
         os.environ.get("INFINIFYX_PROJECT_ROOT", ""),             # explicit env override (highest priority)
         os.path.abspath(os.path.join(current_dir, "..", "..")),   # relative to script file
         os.getcwd(),                                              # agent clone dir
-        # Common dev workspace path (university project):
-        r"D:\UTS\2026Autumn\42174 Artificial Intelligence Studio\Infinity\InfinifyX",
+        # Known dev workspace paths:
+        r"D:\UTS\2026Autumn\42174 Artificial Intelligence Studio\Infinity\InfinifyX",  # Windows
+        "/home/sagemaker-user/InfinifyX",                          # AWS SageMaker
     ]
 
     def _find_path(rel_path: str) -> str:
