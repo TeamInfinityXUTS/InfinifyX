@@ -1,0 +1,58 @@
+# ============================================================
+# InfinifyX — Python Dependencies
+# ============================================================
+# Install all:
+#   pip install -r requirements.txt
+#
+# NOTE: PyTorch and torch-geometric must be installed separately
+# with the correct CUDA/CPU variant (see instructions below).
+# ============================================================
+
+
+# ── Core ML / Deep Learning ─────────────────────────────────
+# Target: PyTorch 2.6 + CUDA 12.6
+# (Tesla T4 / driver 595 / CUDA 13.2 — driver is backward-compatible with cu126 wheels)
+#
+# Step 1 — install PyTorch (run this BEFORE pip install -r requirements.txt):
+#   pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 \
+#       --index-url https://download.pytorch.org/whl/cu126
+#
+# CPU-only fallback:
+#   pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 \
+#       --index-url https://download.pytorch.org/whl/cpu
+# torch==2.6.0
+# torchvision==0.21.0
+# torchaudio==2.6.0
+
+# ── PyTorch Geometric ────────────────────────────────────────
+# Step 2 — install torch-geometric (after PyTorch is installed):
+#   pip install torch-geometric
+#   pip install torch-scatter torch-sparse torch-cluster torch-spline-conv \
+#       -f https://data.pyg.org/whl/torch-2.6.0+cu126.html
+torch-geometric
+
+# ── Computer Vision ──────────────────────────────────────────
+ultralytics==8.2.70      # 锁死版本：完美兼容 NumPy 1.x 生态的 YOLO 稳定版
+opencv-python==4.10.0.84 # 锁死版本：这是要求 numpy<2 的最后一个主流稳定版本
+albucore==0.0.16         # 锁死版本：限制 albumentations 底层依赖，防止其强制升级 numpy
+
+# ── Web / Inference Server ───────────────────────────────────
+fastapi                  # REST + WebSocket API framework
+uvicorn[standard]        # ASGI server (includes websockets + httptools)
+python-multipart         # required by FastAPI for form/file handling
+
+# ── MLOps / Experiment Tracking ─────────────────────────────
+clearml                  # Pipeline orchestration, dataset versioning, artifact upload
+
+# ── Classical ML ─────────────────────────────────────────────
+scikit-learn             # LogisticRegression, StandardScaler (Risk_prediction.py)
+joblib                   # Model serialisation for RiskPredictionModel (.pkl)
+
+# ── Data / Utilities ─────────────────────────────────────────
+numpy==1.26.4            # 核心锁死：严格兼容 AWS SageMaker 核心组件与旧版生态
+tqdm                     # Progress bars in feature engineering pipeline
+pyyaml                   # YAML config parsing (yolo_trainer.py, dataset configs)
+matplotlib               # Risk score distribution plots (Risk_pipeline.py)
+
+# ── Augmentation (MLOps DataProcessing) ─────────────────────
+albumentations==1.4.12   # 锁死版本：数据增强库，此版本不会强行拉取 NumPy 2.x
