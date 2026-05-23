@@ -38,3 +38,4 @@ This directory holds the core inference logic, standalone training scripts, and 
 2. **ClearML Integration**: When updating pipeline components in `MLOps/`, ensure that ClearML `PipelineDecorator` or `PipelineController` logic remains intact.
 3. **Environment Configuration**: Always use local `.conf` file management for ClearML authentication. Avoid hardcoding credentials in the scripts.
 4. **Documentation**: Maintain descriptive docstrings and comments when updating logic for data pipelines or model architectures.
+x
