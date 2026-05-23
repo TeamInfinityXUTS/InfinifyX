@@ -4,11 +4,11 @@ from urllib.parse import unquote, urlparse
 from clearml import InputModel, PipelineDecorator, Task
 
 
-PROJECT_NAME = "HPO_Pipeline1"
+PROJECT_NAME = "HPO_Pipeline"
 DEFAULT_GRAPH_CACHE = "graph_cache.pt"
 DEFAULT_GRAPH_CACHE_TASK_ID = "ac6691e3ce1b4124ae670ba8c84e331d"
 DEFAULT_GRAPH_CACHE_ARTIFACT_NAME = "graph_cache"
-EXECUTION_QUEUE = "HPO"
+EXECUTION_QUEUE = "Yolov8_training_v0.1"
 
 
 @PipelineDecorator.component(cache=False, execution_queue=EXECUTION_QUEUE)
@@ -21,15 +21,23 @@ def hpo_step(
     epochs_per_trial: int = 2,
 ) -> dict:
     """Simplified HPO: train a few GNN configs, return best hyperparameters."""
+    import os
     import torch, numpy as np
     import torch.nn as nn, torch.nn.functional as F
     from clearml import Task
     from torch.utils.data import Subset
     from torch_geometric.loader import DataLoader
     from torch_geometric.nn import GCNConv, global_mean_pool
-    from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+    from sklearn.metrics import (
+        accuracy_score,
+        precision_recall_fscore_support,
+        classification_report,
+        confusion_matrix,
+    )
+    import matplotlib.pyplot as plt
 
-    Task.init(project_name="HPO_Pipeline", task_name="GNN_HPO")
+    task = Task.current_task() or Task.init(project_name="HPO_Pipeline", task_name="GNN_HPO")
+    logger = task.get_logger()
 
     def validate_file(path, label):
         if not path or not os.path.isfile(path):
@@ -120,6 +128,10 @@ def hpo_step(
     ][:n_trials]
 
     best_cfg, best_f1 = None, 0
+    best_accuracy = 0
+    best_y_true, best_y_pred = [], []
+    best_report = ""
+    best_class_precisions, best_class_recalls, best_class_f1s = [], [], []
     for idx, cfg in enumerate(search_space):
         loader = DataLoader(Subset(ds, range(train_size)), batch_size=8, shuffle=True)
         model = STM(hd=cfg["hidden_dim"], dp=cfg["dropout"]).to(device)
@@ -139,17 +151,107 @@ def hpo_step(
             with torch.no_grad(): pred = model(g).item()
             y_true.append(0 if label.item() < low_t else (1 if label.item() < high_t else 2))
             y_pred.append(0 if pred < low_t else (1 if pred < high_t else 2))
-        _, _, f1, _ = precision_recall_fscore_support(y_true, y_pred, average="macro", zero_division=0)
+        
+        # Calculate metrics
+        accuracy = accuracy_score(y_true, y_pred)
+        precision, recall, f1, _ = precision_recall_fscore_support(
+            y_true, y_pred, average="macro", zero_division=0
+        )
+        class_precisions, class_recalls, class_f1s, _ = precision_recall_fscore_support(
+            y_true, y_pred, labels=[0, 1, 2], average=None, zero_division=0
+        )
+        
+        report = classification_report(
+            y_true, y_pred, labels=[0, 1, 2],
+            target_names=["Low", "Medium", "High"],
+            digits=3, zero_division=0,
+        )
+        
         print(f"[HPO trial {idx+1}] config={cfg} f1={f1:.3f}")
+        print(f"[HPO trial {idx+1}] accuracy={accuracy:.3f}")
+        
+        # Log metrics to ClearML
+        logger.report_scalar(f"trial_{idx+1}/metrics", "accuracy", float(accuracy), 0)
+        logger.report_scalar(f"trial_{idx+1}/metrics", "precision", float(precision), 0)
+        logger.report_scalar(f"trial_{idx+1}/metrics", "recall", float(recall), 0)
+        logger.report_scalar(f"trial_{idx+1}/metrics", "f1", float(f1), 0)
+        
         if f1 > best_f1:
-            best_f1 = f1; best_cfg = cfg
+            best_f1 = f1
+            best_cfg = cfg
+            best_accuracy = accuracy
+            best_y_true = y_true
+            best_y_pred = y_pred
+            best_report = report
+            best_class_precisions = class_precisions
+            best_class_recalls = class_recalls
+            best_class_f1s = class_f1s
+
+    # Generate evaluation plots for best trial
+    plot_dir = os.path.join(os.getcwd(), "clearml_plots")
+    os.makedirs(plot_dir, exist_ok=True)
+    
+    # Confusion Matrix
+    cm = confusion_matrix(best_y_true, best_y_pred, labels=[0, 1, 2])
+    fig, ax = plt.subplots(figsize=(8, 6))
+    im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+    ax.figure.colorbar(im, ax=ax)
+    ax.set(
+        xticks=np.arange(cm.shape[1]),
+        yticks=np.arange(cm.shape[0]),
+        xticklabels=["Low", "Medium", "High"],
+        yticklabels=["Low", "Medium", "High"],
+        ylabel="True label",
+        xlabel="Predicted label",
+        title="GNN HPO Confusion Matrix",
+    )
+    thresh = cm.max() / 2.0
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], 'd'),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    fig.tight_layout()
+    cm_path = os.path.join(plot_dir, "hpo_confusion_matrix.png")
+    fig.savefig(cm_path, dpi=150)
+    plt.close(fig)
+    logger.report_image("HPO_Results", "confusion_matrix", local_path=cm_path, iteration=0)
+    
+    # Per-class Metrics Bar Chart
+    x = np.arange(3)
+    width = 0.25
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(x - width, best_class_precisions, width, label="Precision", color="#4C72B0")
+    ax.bar(x, best_class_recalls, width, label="Recall", color="#55A868")
+    ax.bar(x + width, best_class_f1s, width, label="F1", color="#C44E52")
+    ax.set_title("Per-class Precision / Recall / F1")
+    ax.set_xlabel("Risk group")
+    ax.set_ylabel("Score")
+    ax.set_xticks(x)
+    ax.set_xticklabels(["Low", "Medium", "High"])
+    ax.set_ylim(0, 1.05)
+    ax.legend()
+    for i, (p, r, f) in enumerate(zip(best_class_precisions, best_class_recalls, best_class_f1s)):
+        ax.text(i - width, p + 0.02, f"{p:.3f}", ha="center", va="bottom", fontsize=9)
+        ax.text(i, r + 0.02, f"{r:.3f}", ha="center", va="bottom", fontsize=9)
+        ax.text(i + width, f + 0.02, f"{f:.3f}", ha="center", va="bottom", fontsize=9)
+    fig.tight_layout()
+    metrics_path = os.path.join(plot_dir, "hpo_metrics_bar.png")
+    fig.savefig(metrics_path, dpi=150)
+    plt.close(fig)
+    logger.report_image("HPO_Results", "metrics_bar_chart", local_path=metrics_path, iteration=0)
+    
+    # Report classification report
+    logger.report_text(best_report)
+    logger.report_text(f"Best HPO Trial: Config = {best_cfg}, F1 = {best_f1:.3f}")
 
     print(f"[HPO] Best config: {best_cfg} f1={best_f1:.3f}")
-    return {"best_config": best_cfg, "best_f1": float(best_f1)}
+    return {"best_config": best_cfg, "best_f1": float(best_f1), "best_accuracy": float(best_accuracy)}
 
 
 if __name__ == "__main__":
-    Task.init(project_name="HPO_Pipeline1", task_name="GNN_HPO", reuse_last_task_id=False)
+    # Initialize ClearML Task to avoid AttributeError with PipelineDecorator
+    Task.init(project_name=PROJECT_NAME, task_name="GNN_HPO_Main", reuse_last_task_id=False)
     
     result = hpo_step(
         graph_cache=DEFAULT_GRAPH_CACHE,
