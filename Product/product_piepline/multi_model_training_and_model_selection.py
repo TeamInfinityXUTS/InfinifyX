@@ -56,6 +56,7 @@ def get_args():
     )
     return parser.parse_args()
 
+args = get_args()
 
 GNN_MODEL_CONFIGS = [
     {
