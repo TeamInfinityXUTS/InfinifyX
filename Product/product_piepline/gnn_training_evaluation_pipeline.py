@@ -11,6 +11,37 @@ DEFAULT_GRAPH_CACHE_TASK_ID = "ac6691e3ce1b4124ae670ba8c84e331d"
 DEFAULT_GRAPH_CACHE_ARTIFACT_NAME = "graph_cache"
 
 
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        description="Run the GNN training and evaluation pipeline with custom parameters."
+    )
+    parser.add_argument(
+        "--pipeline",
+        choices=["local", "artifact", "model"],
+        default="artifact",
+        help="Which pipeline to run: local graph cache, artifact-based graph cache, or model-based graph cache.",
+    )
+    parser.add_argument(
+        "--run_mode",
+        choices=["local", "remote"],
+        default="local",
+        help="Run mode: local (in-process) or remote (enqueue to ClearML queue).",
+    )
+    parser.add_argument("--queue", default="Yolov8_training_v0.1", help="ClearML queue name for remote execution.")
+    parser.add_argument("--graph_cache", default=DEFAULT_GRAPH_CACHE, help="Local graph cache path.")
+    parser.add_argument("--graph_cache_task_id", default=DEFAULT_GRAPH_CACHE_TASK_ID, help="ClearML task id for graph cache artifact.")
+    parser.add_argument("--graph_cache_artifact_name", default=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME, help="Artifact name for graph cache in ClearML task.")
+    parser.add_argument("--graph_cache_model_id", default=None, help="ClearML model id for graph cache model.")
+    parser.add_argument("--hidden_dim", type=int, default=64, help="Hidden dimension size for the GNN.")
+    parser.add_argument("--dropout", type=float, default=0.3, help="Dropout rate for the GNN.")
+    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate for the optimizer.")
+    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs.")
+    parser.add_argument("--batch_size", type=int, default=8, help="Training batch size.")
+    return parser.parse_args()
+
+args = get_args()
+
 @PipelineDecorator.component(execution_queue=args.queue)
 def gnn_train_step(
     graph_cache,
@@ -527,35 +558,6 @@ def gnn_training_evaluation_from_clearml_artifact_pipeline(
         graph_cache_artifact_name=graph_cache_artifact_name,
     )
     return register_gnn_model_step(model_path, metrics)
-
-
-def get_args():
-    parser = argparse.ArgumentParser(
-        description="Run the GNN training and evaluation pipeline with custom parameters."
-    )
-    parser.add_argument(
-        "--pipeline",
-        choices=["local", "artifact", "model"],
-        default="artifact",
-        help="Which pipeline to run: local graph cache, artifact-based graph cache, or model-based graph cache.",
-    )
-    parser.add_argument(
-        "--run_mode",
-        choices=["local", "remote"],
-        default="local",
-        help="Run mode: local (in-process) or remote (enqueue to ClearML queue).",
-    )
-    parser.add_argument("--queue", default="Yolov8_training_v0.1", help="ClearML queue name for remote execution.")
-    parser.add_argument("--graph_cache", default=DEFAULT_GRAPH_CACHE, help="Local graph cache path.")
-    parser.add_argument("--graph_cache_task_id", default=DEFAULT_GRAPH_CACHE_TASK_ID, help="ClearML task id for graph cache artifact.")
-    parser.add_argument("--graph_cache_artifact_name", default=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME, help="Artifact name for graph cache in ClearML task.")
-    parser.add_argument("--graph_cache_model_id", default=None, help="ClearML model id for graph cache model.")
-    parser.add_argument("--hidden_dim", type=int, default=64, help="Hidden dimension size for the GNN.")
-    parser.add_argument("--dropout", type=float, default=0.3, help="Dropout rate for the GNN.")
-    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate for the optimizer.")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs.")
-    parser.add_argument("--batch_size", type=int, default=8, help="Training batch size.")
-    return parser.parse_args()
 
 
 if __name__ == "__main__":
