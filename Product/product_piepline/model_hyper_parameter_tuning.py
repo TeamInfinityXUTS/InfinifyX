@@ -324,30 +324,40 @@ def train_evaluate_single_task(
         task,
     )
 
+    # Ensure result_metrics is valid
+    if result_metrics is None:
+        print("Error: _plot_evaluation_results returned None. Using default metrics.")
+        result_metrics = {
+            "accuracy": 0.0,
+            "macro_precision": 0.0,
+            "macro_recall": 0.0,
+            "macro_f1": 0.0,
+        }
+
     metric_iteration = int(config["epochs"]) + 1
     task.get_logger().report_text(report)
     task.get_logger().report_scalar(
         "metrics",
         "accuracy",
-        result_metrics["accuracy"],
+        float(result_metrics["accuracy"]),
         metric_iteration,
     )
     task.get_logger().report_scalar(
         "metrics",
         "macro_precision",
-        result_metrics["macro_precision"],
+        float(result_metrics["macro_precision"]),
         metric_iteration,
     )
     task.get_logger().report_scalar(
         "metrics",
         "macro_recall",
-        result_metrics["macro_recall"],
+        float(result_metrics["macro_recall"]),
         metric_iteration,
     )
     task.get_logger().report_scalar(
         "metrics",
         "macro_f1",
-        result_metrics["macro_f1"],
+        float(result_metrics["macro_f1"]),
         metric_iteration,
     )
 
@@ -650,30 +660,40 @@ def run_trial_from_current_task():
         task,
     )
 
+    # Ensure result_metrics is valid
+    if result_metrics is None:
+        print("Error: _plot_evaluation_results returned None. Using default metrics.")
+        result_metrics = {
+            "accuracy": 0.0,
+            "macro_precision": 0.0,
+            "macro_recall": 0.0,
+            "macro_f1": 0.0,
+        }
+
     metric_iteration = int(config["epochs"]) + 1
     task.get_logger().report_text(report)
     task.get_logger().report_scalar(
         "metrics",
         "accuracy",
-        result_metrics["accuracy"],
+        float(result_metrics["accuracy"]),
         metric_iteration,
     )
     task.get_logger().report_scalar(
         "metrics",
         "macro_precision",
-        result_metrics["macro_precision"],
+        float(result_metrics["macro_precision"]),
         metric_iteration,
     )
     task.get_logger().report_scalar(
         "metrics",
         "macro_recall",
-        result_metrics["macro_recall"],
+        float(result_metrics["macro_recall"]),
         metric_iteration,
     )
     task.get_logger().report_scalar(
         "metrics",
         "macro_f1",
-        result_metrics["macro_f1"],
+        float(result_metrics["macro_f1"]),
         metric_iteration,
     )
 
