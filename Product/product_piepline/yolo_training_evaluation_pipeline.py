@@ -352,6 +352,6 @@ if __name__ == "__main__":
         import json
         with open(args.state_file, "r") as f:
             state = json.load(f)
-        state["yolo_weight_path"] = result["model_path"]
+        state["yolo_weight_path"] = str(result["model_path"])
         with open(args.state_file, "w") as f:
             json.dump(state, f, indent=4)

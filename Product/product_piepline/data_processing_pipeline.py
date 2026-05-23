@@ -283,9 +283,10 @@ if __name__ == '__main__':
     
     if args.state_file:
         import json
+        processed_dir_str = str(processed_dir)
         with open(args.state_file, "r") as f:
             state = json.load(f)
-        state["dataset_yaml"] = os.path.join(processed_dir, "dataset.yaml")
-        state["data_dir"] = os.path.join(processed_dir, "images", "train")
+        state["dataset_yaml"] = os.path.join(processed_dir_str, "dataset.yaml")
+        state["data_dir"] = os.path.join(processed_dir_str, "images", "train")
         with open(args.state_file, "w") as f:
             json.dump(state, f, indent=4)

@@ -342,6 +342,6 @@ if __name__ == "__main__":
         import json
         with open(args.state_file, "r") as f:
             state = json.load(f)
-        state["graph_cache_path"] = graph_cache_path
+        state["graph_cache_path"] = str(graph_cache_path)
         with open(args.state_file, "w") as f:
             json.dump(state, f, indent=4)
