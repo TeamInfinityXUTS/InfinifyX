@@ -1,9 +1,19 @@
+import sys
+import os
+
+# Add MLOps directory to sys.path so we can import from it
+current_dir = os.path.dirname(os.path.abspath(__file__))
+mlops_dir = os.path.abspath(os.path.join(current_dir, '..', '..', 'MLOps', 'Model_Training_Evaluation_and_Deployment_Pipeline'))
+if mlops_dir not in sys.path:
+    sys.path.append(mlops_dir)
+
 from clearml import PipelineDecorator, Task, OutputModel
 from DatasetManager import DatasetManager
 from yolo_trainer import YOLOTrainer
 from CBAM import CBAM
 from SE import SE
 from ultralytics import YOLO
+import torch
 import os
 import torch
 
@@ -34,9 +44,14 @@ def validate_file(path, label):
     return path
 
 
-@PipelineDecorator.component(cache=False, execution_queue="data_engineer")
+@PipelineDecorator.component(cache=True, execution_queue="data_engineer")
 def dataset_step(project, name, target_folder="data"):
+    import sys
     import os
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    mlops_dir = os.path.abspath(os.path.join(current_dir, '..', '..', 'MLOps', 'Model_Training_Evaluation_and_Deployment_Pipeline'))
+    if mlops_dir not in sys.path:
+        sys.path.append(mlops_dir)
     import uuid
     from clearml import Task
     from DatasetManager import DatasetManager
@@ -84,7 +99,13 @@ def dataset_yaml_step(yaml_path):
 
 @PipelineDecorator.component(execution_queue="data_engineer")
 def yolo_train_step(yaml_path, weight, epochs=1):
+    import sys
     import os
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    mlops_dir = os.path.abspath(os.path.join(current_dir, '..', '..', 'MLOps', 'Model_Training_Evaluation_and_Deployment_Pipeline'))
+    if mlops_dir not in sys.path:
+        sys.path.append(mlops_dir)
+
     from clearml import Task
     from yolo_trainer import YOLOTrainer
     from CBAM import CBAM
@@ -124,13 +145,14 @@ def yolo_train_step(yaml_path, weight, epochs=1):
 
 
 @PipelineDecorator.component(execution_queue="data_engineer")
-def yolo_evaluation_step(
-    yaml_path,
-    model_path,
-    imgsz=960,
-    batch=16
-):
+def yolo_evaluation_step(model_path, yaml_path, imgsz=960, batch=16):
+    import sys
     import os
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    mlops_dir = os.path.abspath(os.path.join(current_dir, '..', '..', 'MLOps', 'Model_Training_Evaluation_and_Deployment_Pipeline'))
+    if mlops_dir not in sys.path:
+        sys.path.append(mlops_dir)
+
     import torch
     from clearml import Task
     from ultralytics import YOLO

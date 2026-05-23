@@ -19,6 +19,7 @@ if __name__ == "__main__":
     gnn_epochs = 1
     hpo_trials = 2
     multi_epochs = 1
+    dataset_path = "data_preprocessing/datasets/bdd100k"
     
     # If running within ClearML, get parameters
     task = Task.current_task()
@@ -31,12 +32,13 @@ if __name__ == "__main__":
         gnn_epochs = int(general.get("gnn_epochs", gnn_epochs))
         hpo_trials = int(general.get("hpo_trials", hpo_trials))
         multi_epochs = int(general.get("multi_epochs", multi_epochs))
+        dataset_path = str(general.get("dataset_path", dataset_path))
         print("Loaded parameters from ClearML task")
     
-    print(f"Parameters: subset_percentage={subset_percentage}, yolo_epochs={yolo_epochs}, gnn_epochs={gnn_epochs}, hpo_trials={hpo_trials}, multi_epochs={multi_epochs}")
+    print(f"Parameters: dataset_path={dataset_path}, subset_percentage={subset_percentage}, yolo_epochs={yolo_epochs}, gnn_epochs={gnn_epochs}, hpo_trials={hpo_trials}, multi_epochs={multi_epochs}")
     
     # 1. Data Processing
-    run_step(f"python Product/product_piepline/data_processing_pipeline.py --subset_percentage {subset_percentage}")
+    run_step(f"python Product/product_piepline/data_processing_pipeline.py --dataset_path \"{dataset_path}\" --subset_percentage {subset_percentage}")
     
     # 2. YOLO Training & Evaluation
     run_step(f"python Product/product_piepline/yolo_training_evaluation_pipeline.py --epochs {yolo_epochs} --yaml_path data_preprocessing/datasets/bdd100k_subset_yolo/dataset.yaml")

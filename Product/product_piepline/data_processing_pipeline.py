@@ -41,14 +41,18 @@ else:
 # ==========================================
 # 1. Preprocessing Component
 # ==========================================
-@PipelineDecorator.component(cache=True, execution_queue="data_engineer")
-def data_preprocessing_step(dataset_path: str, subset_percentage=None) -> str:
+@PipelineDecorator.component(execution_queue="data_engineer")
+def data_preprocessing_step(dataset_path: str, subset_percentage: float) -> str:
     import os
-    import shutil
     import json
     import random
+    import shutil
+    import sys
 
-    # Defensive: ClearML may pass None or string if param parsing fails
+    # Get the output dir from args or default to next to the original dataset if not running from CLI?
+    # Actually, we can just hardcode the output dir relative to the CWD for pipeline consistency
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    output_dir = os.path.join(project_root, "data_preprocessing", "datasets", "bdd100k_subset_yolo")
     DEFAULT_PCT = 0.1
     try:
         if subset_percentage is None or subset_percentage == "" or str(subset_percentage).lower() == "none":
@@ -160,6 +164,18 @@ def data_preprocessing_step(dataset_path: str, subset_percentage=None) -> str:
 
         processed_count += 1
 
+    import yaml
+    yaml_path = os.path.join(output_dir, "dataset.yaml")
+    yaml_data = {
+        "path": output_dir,
+        "train": "images/train",
+        "val": "images/val",
+        "nc": 10,
+        "names": ["pedestrian", "rider", "car", "truck", "bus", "train", "motorcycle", "bicycle", "traffic light", "traffic sign"]
+    }
+    with open(yaml_path, 'w') as f_yaml:
+        yaml.safe_dump(yaml_data, f_yaml, sort_keys=False)
+
     print(f"Processed and converted {processed_count} images to YOLO format.")
     return output_dir
 
@@ -234,53 +250,32 @@ def data_processing_pipeline(
 if __name__ == '__main__':
     from clearml import Task as _Task
 
-    clearml_task_id = os.environ.get('CLEARML_TASK_ID')
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset_path", type=str, default="data_preprocessing/datasets/bdd100k")
+    parser.add_argument("--subset_percentage", type=float, default=0.1)
+    parser.add_argument("--output_dir", type=str, default="data_preprocessing/datasets/bdd100k_subset_yolo")
+    args = parser.parse_args()
 
-    if clearml_task_id:
-        # Agent / CI mode
-        print(f"[*] Running inside ClearML Agent. Task ID: {clearml_task_id}")
-        task = _Task.init(continue_last_task=clearml_task_id)
-        params = task.get_parameters()
-        ds_path    = params.get("General/dataset_path", "data_preprocessing/datasets/bdd100k")
-        percentage = float(params.get("General/subset_percentage", 0.1))
-        ds_name    = params.get("General/output_dataset_name",
-                                f"BDD100k_{percentage}percent_YOLO")
+    # Always use the CLI args
+    ds_path = args.dataset_path
+    percentage = args.subset_percentage
+    ds_name = f"BDD100k_{percentage}percent_YOLO"
 
-        if not os.path.isabs(ds_path):
-            local_dataset_path = os.path.abspath(
-                os.path.join(current_dir, '..', '..', 'data_preprocessing', 'datasets', 'bdd100k')
-            )
-            ds_path = local_dataset_path if os.path.exists(local_dataset_path) else os.path.abspath(ds_path)
-            print(f"[*] Resolved dataset path to: {ds_path}")
+    # If the user provides a relative path, resolve it relative to the project root
+    if not os.path.isabs(ds_path):
+        project_root = os.path.abspath(os.path.join(current_dir, '..', '..'))
+        ds_path = os.path.join(project_root, ds_path)
 
-        print(f"Initiating pipeline with {percentage}% extraction from {ds_path}")
-        PipelineDecorator.run_locally()
-        data_processing_pipeline(
-            dataset_path=ds_path,
-            subset_percentage=percentage,
-            output_dataset_name=ds_name,
-            skip_upload=True,
-        )
-    else:
-        import argparse
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--subset_percentage", type=float, default=0.1)
-        args = parser.parse_args()
-
-        # Local debug mode
-        project_root   = os.path.abspath(os.path.join(current_dir, '..', '..'))
-        input_ds_path  = os.path.join(project_root, 'data_preprocessing', 'datasets', 'bdd100k')
-        percentage     = args.subset_percentage
-        ds_name        = f"BDD100k_{percentage}percent_YOLO"
-
-        print(f"[*] Project root  : {project_root}")
-        print(f"[*] Dataset path  : {input_ds_path}")
-        print(f"[*] Subset        : {percentage}%")
-        print("[*] Local mode: Running pipeline locally for debugging.")
-        PipelineDecorator.run_locally()
-        data_processing_pipeline(
-            dataset_path=input_ds_path,
-            subset_percentage=percentage,
-            output_dataset_name=ds_name,
-            skip_upload=True,
-        )
+    print(f"[*] Dataset path  : {ds_path}")
+    print(f"[*] Output dir    : {args.output_dir}")
+    print(f"[*] Subset        : {percentage}%")
+    print("[*] Running pipeline locally.")
+    
+    PipelineDecorator.run_locally()
+    data_processing_pipeline(
+        dataset_path=ds_path,
+        subset_percentage=percentage,
+        output_dataset_name=ds_name,
+        skip_upload=True,
+    )
