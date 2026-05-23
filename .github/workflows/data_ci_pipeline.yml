@@ -3,6 +3,10 @@ name: ClearML End-to-End CI Pipeline
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'Product/product_piepline/**'
+      - 'MLOps/**'
+      - '.github/workflows/data_ci_pipeline.yml'
   workflow_dispatch:
 
 jobs:
