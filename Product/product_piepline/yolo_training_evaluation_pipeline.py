@@ -324,12 +324,22 @@ if __name__ == "__main__":
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--batch", type=int, default=4)
     parser.add_argument("--yaml_path", type=str, default="data/dataset.yaml")
+    parser.add_argument("--state_file", type=str, default=None)
     args = parser.parse_args()
+
+    yaml_path = args.yaml_path
+    if args.state_file and os.path.exists(args.state_file):
+        import json
+        with open(args.state_file, "r") as f:
+            state = json.load(f)
+        if "dataset_yaml" in state:
+            yaml_path = state["dataset_yaml"]
+            print(f"[*] Read dataset_yaml from state file: {yaml_path}")
 
     PipelineDecorator.run_locally()
 
     result = yolo_training_evaluation_pipeline(
-        yaml_path=args.yaml_path,
+        yaml_path=yaml_path,
         weight="Model/Yolo_best.pt",
         epochs=args.epochs,
         imgsz=args.imgsz,
@@ -337,3 +347,11 @@ if __name__ == "__main__":
     )
 
     print("Final YOLO result:", result)
+    
+    if args.state_file:
+        import json
+        with open(args.state_file, "r") as f:
+            state = json.load(f)
+        state["yolo_weight_path"] = result["model_path"]
+        with open(args.state_file, "w") as f:
+            json.dump(state, f, indent=4)

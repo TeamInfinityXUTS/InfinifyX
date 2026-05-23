@@ -38,9 +38,21 @@ def get_args():
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate for the optimizer.")
     parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs.")
     parser.add_argument("--batch_size", type=int, default=8, help="Training batch size.")
+    parser.add_argument("--state_file", type=str, default=None, help="State file to read pipeline parameters from")
     return parser.parse_args()
 
 args = get_args()
+
+if args.state_file:
+    import os
+    if os.path.exists(args.state_file):
+        import json
+        with open(args.state_file, "r") as f:
+            state = json.load(f)
+        if "graph_cache_path" in state:
+            args.graph_cache = state["graph_cache_path"]
+            args.pipeline = "local"
+            print(f"[*] Read graph_cache from state file: {args.graph_cache}")
 
 @PipelineDecorator.component(execution_queue=args.queue)
 def gnn_train_step(
@@ -599,3 +611,11 @@ if __name__ == "__main__":
             batch_size=args.batch_size,
         )
     print("Final GNN result:", result)
+    
+    if args.state_file:
+        import json
+        with open(args.state_file, "r") as f:
+            state = json.load(f)
+        state["gnn_weight_path"] = result["model_path"]
+        with open(args.state_file, "w") as f:
+            json.dump(state, f, indent=4)

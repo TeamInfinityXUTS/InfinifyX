@@ -54,9 +54,24 @@ def get_args():
         default=None,
         help="Override epochs for all GNN models.",
     )
+    parser.add_argument(
+        "--state_file",
+        type=str,
+        default=None,
+        help="State file to read pipeline parameters from.",
+    )
     return parser.parse_args()
 
 args = get_args()
+
+import os
+if args.state_file and os.path.exists(args.state_file):
+    import json
+    with open(args.state_file, "r") as f:
+        state = json.load(f)
+    if "graph_cache_path" in state:
+        args.graph_cache = state["graph_cache_path"]
+        print(f"[*] Read graph_cache from state file: {args.graph_cache}")
 
 GNN_MODEL_CONFIGS = [
     {
@@ -137,11 +152,8 @@ def train_evaluate_register_single_model(
         reuse_last_task_id=False,
     )
     config = task.connect(config, name="ModelConfig")
-    graph_cache = graph_cache or "graph_cache.pt"
-    graph_cache_task_id = (
-        graph_cache_task_id
-        or "cc75418e3fd94e0f8d7c78a0e2b2f8e9"
-    )
+    graph_cache = graph_cache or DEFAULT_GRAPH_CACHE
+    graph_cache_task_id = graph_cache_task_id or None
     graph_cache_artifact_name = graph_cache_artifact_name or "graph_cache"
 
     def validate_file(path, label):
@@ -738,10 +750,10 @@ def select_best_model(results, score_key="score"):
     project="MLOps_Product_Assisted_Driving",
 )
 def gnn_multi_model_training_selection_pipeline(
-    graph_cache="graph_cache.pt",
+    graph_cache=DEFAULT_GRAPH_CACHE,
     graph_cache_model_id=None,
-    graph_cache_task_id="cc75418e3fd94e0f8d7c78a0e2b2f8e9",
-    graph_cache_artifact_name="graph_cache",
+    graph_cache_task_id=DEFAULT_GRAPH_CACHE_TASK_ID,
+    graph_cache_artifact_name=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
 ):
     results = []
 

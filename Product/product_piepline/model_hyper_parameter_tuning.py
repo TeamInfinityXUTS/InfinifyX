@@ -632,11 +632,26 @@ def get_args():
         default=RUN_MODE_CONTROLLER,
         help="Run mode: controller to start HPO, trial to run a trial from current task.",
     )
+    parser.add_argument(
+        "--state_file",
+        type=str,
+        default=None,
+        help="State file to read pipeline parameters from.",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = get_args()
+    
+    if args.state_file and os.path.exists(args.state_file):
+        import json
+        with open(args.state_file, "r") as f:
+            state = json.load(f)
+        if "graph_cache_path" in state:
+            args.graph_cache = state["graph_cache_path"]
+            print(f"[*] Read graph_cache from state file: {args.graph_cache}")
+    
     current_task = Task.current_task()
     if current_task is not None:
         runtime_config = current_task.connect(

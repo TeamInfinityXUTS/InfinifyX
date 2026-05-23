@@ -301,24 +301,47 @@ if __name__ == "__main__":
         project_root, "data_preprocessing", "datasets",
         "bdd100k_subset_yolo", "images", "train"
     ))
+    parser.add_argument("--state_file", type=str, default=None)
     args = parser.parse_args()
+
+    yolo_weight = args.yolo_weight
+    data_dir = args.data_dir
+    
+    if args.state_file and os.path.exists(args.state_file):
+        import json
+        with open(args.state_file, "r") as f:
+            state = json.load(f)
+        if "yolo_weight_path" in state:
+            yolo_weight = state["yolo_weight_path"]
+            print(f"[*] Read yolo_weight from state file: {yolo_weight}")
+        if "data_dir" in state:
+            data_dir = state["data_dir"]
+            print(f"[*] Read data_dir from state file: {data_dir}")
 
     print(f"[*] Project root  : {project_root}")
     print(f"[*] YOLO weight   : {args.yolo_weight}")
     print(f"[*] YOLO cache    : {args.yolo_cache}")
     print(f"[*] Data directory: {args.data_dir}")
 
-    for label, path in [("YOLO weight", args.yolo_weight),
+    for label, path in [("YOLO weight", yolo_weight),
                          ("YOLO cache",  args.yolo_cache),
-                         ("Data dir",    args.data_dir)]:
+                         ("Data dir",    data_dir)]:
         print(f"    [{'OK' if os.path.exists(path) else 'NOT FOUND'}] {label}: {path}")
 
     # Run pipeline controller locally — individual steps still dispatch to
     # the 'data_engineer' queue and are picked up by the local ClearML agent.
     PipelineDecorator.run_locally()
 
-    feature_engineering_pipeline(
-        yolo_weight_path=args.yolo_weight,
+    graph_cache_path = feature_engineering_pipeline(
+        yolo_weight_path=yolo_weight,
         yolo_cache_path=args.yolo_cache,
-        data_dir=args.data_dir,
+        data_dir=data_dir,
     )
+    
+    if args.state_file:
+        import json
+        with open(args.state_file, "r") as f:
+            state = json.load(f)
+        state["graph_cache_path"] = graph_cache_path
+        with open(args.state_file, "w") as f:
+            json.dump(state, f, indent=4)

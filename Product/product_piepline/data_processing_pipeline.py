@@ -255,6 +255,7 @@ if __name__ == '__main__':
     parser.add_argument("--dataset_path", type=str, default="data_preprocessing/datasets/bdd100k")
     parser.add_argument("--subset_percentage", type=float, default=0.1)
     parser.add_argument("--output_dir", type=str, default="data_preprocessing/datasets/bdd100k_subset_yolo")
+    parser.add_argument("--state_file", type=str, default=None)
     args = parser.parse_args()
 
     # Always use the CLI args
@@ -273,9 +274,18 @@ if __name__ == '__main__':
     print("[*] Running pipeline locally.")
     
     PipelineDecorator.run_locally()
-    data_processing_pipeline(
+    processed_dir = data_processing_pipeline(
         dataset_path=ds_path,
         subset_percentage=percentage,
         output_dataset_name=ds_name,
         skip_upload=True,
     )
+    
+    if args.state_file:
+        import json
+        with open(args.state_file, "r") as f:
+            state = json.load(f)
+        state["dataset_yaml"] = os.path.join(processed_dir, "dataset.yaml")
+        state["data_dir"] = os.path.join(processed_dir, "images", "train")
+        with open(args.state_file, "w") as f:
+            json.dump(state, f, indent=4)
