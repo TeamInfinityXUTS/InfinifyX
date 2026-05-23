@@ -229,3 +229,27 @@ https://tzapmkixqvdpkjz.studio.sagemaker.ap-southeast-2.app.aws/jupyterlab/defau
 - Stopping a SageMaker Space clears all running processes and crontab entries
 - The project directory (`/home/sagemaker-user/InfinifyX`) persists on EFS across restarts
 - After each Space restart, run `bash scripts/deploy.sh` to restore the server
+
+---
+
+## Sequential CI Pipeline Isolation and State Passing
+
+**Date**: 2026-05-24
+**Context**: Refactored the end-to-end CI pipeline to execute each step completely sequentially to prevent pipeline node contamination, while passing dynamic state between the processes.
+
+### Actions Taken:
+
+1. **State Passing Mechanism (`.ci_state.json`)**:
+   - Hardcoded paths (like `Model/Yolo_best.pt` or `graph_cache.pt`) caused fragile dependencies between CI pipeline steps.
+   - Introduced a shared `.ci_state.json` file created by `scripts/ci_runner.py` at the start of the pipeline.
+   - Each pipeline step (e.g., `data_processing_pipeline.py`, `yolo_training_evaluation_pipeline.py`) accepts a `--state_file` argument.
+   - Scripts read the outputs of previous steps from this file and write their own generated output paths (like `dataset_yaml`, `yolo_weight_path`, `graph_cache_path`) back to it for the next step.
+
+2. **ClearML Proxy Object Fix**:
+   - Identified that `PipelineDecorator` component returns are ClearML proxy objects, which fail when passed directly to `os.path.join()`.
+   - Fixed by wrapping all component return values in `str()` before serializing to `.ci_state.json`.
+
+3. **Task Isolation via `subprocess.run`**:
+   - `os.system()` was originally used in `ci_runner.py` to trigger pipelines sequentially.
+   - Even after unsetting `CLEARML_TASK_ID`, child pipelines still inherited internal ClearML process tracking variables (`CLEARML_PROC_MASTER_ID`, etc.), causing multiple pipelines to share a single Task and polluting the graph logic (`base_task_id is empty`).
+   - Replaced `os.system()` with `subprocess.run()` using a sanitized `env` dictionary that strips any environment variable starting with `CLEARML_TASK_ID` or `CLEARML_PROC`, ensuring 100% isolation for every sub-pipeline execution.
