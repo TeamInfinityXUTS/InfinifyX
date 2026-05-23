@@ -1,13 +1,17 @@
+import argparse
+
 from clearml import OutputModel, PipelineDecorator, Task
+
+from utils.evaluation_utils import _plot_evaluation_results
 
 
 PROJECT_NAME = "MLOps_Product_Assisted_Driving"
 DEFAULT_GRAPH_CACHE = "graph_cache.pt"
-DEFAULT_GRAPH_CACHE_TASK_ID = ""   # Set via parameter — no hardcoded fallback
+DEFAULT_GRAPH_CACHE_TASK_ID = "ac6691e3ce1b4124ae670ba8c84e331d"
 DEFAULT_GRAPH_CACHE_ARTIFACT_NAME = "graph_cache"
 
 
-@PipelineDecorator.component(execution_queue="data_engineer")
+@PipelineDecorator.component(execution_queue=args.queue)
 def gnn_train_step(
     graph_cache,
     graph_cache_model_id=None,
@@ -22,6 +26,7 @@ def gnn_train_step(
     import os
     from urllib.parse import unquote, urlparse
 
+    import matplotlib.pyplot as plt
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
@@ -141,7 +146,10 @@ def gnn_train_step(
     loss_fn = nn.MSELoss()
 
     best_loss = float("inf")
-    model_path = "risk_gnn_model.pt"
+    model_dir = os.path.join("models", "gnn_training_evaluation_pipeline")
+    os.makedirs(model_dir, exist_ok=True)
+    model_path = os.path.join(model_dir, "risk_gnn_model.pt")
+    epoch_losses = []
 
     for epoch in range(epochs):
         model.train()
@@ -160,6 +168,7 @@ def gnn_train_step(
             total_loss += loss.item()
 
         avg_loss = total_loss / len(train_loader)
+        epoch_losses.append(avg_loss)
         task.get_logger().report_scalar("train", "loss", float(avg_loss), epoch)
         print(f"Epoch {epoch + 1}/{epochs} | GNN loss: {avg_loss:.6f}")
 
@@ -178,10 +187,24 @@ def gnn_train_step(
                 model_path,
             )
 
+    plot_dir = os.path.join(os.getcwd(), "clearml_plots")
+    os.makedirs(plot_dir, exist_ok=True)
+    loss_plot_path = os.path.join(plot_dir, "gnn_train_loss_curve.png")
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(range(1, len(epoch_losses) + 1), epoch_losses, marker="o", color="#1f77b4")
+    ax.set_title("GNN Training Loss")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.grid(True, linestyle="--", alpha=0.4)
+    fig.tight_layout()
+    fig.savefig(loss_plot_path)
+    plt.close(fig)
+    task.get_logger().report_image("train", "loss_curve", local_path=loss_plot_path, iteration=0)
+
     return model_path
 
 
-@PipelineDecorator.component(execution_queue="data_engineer")
+@PipelineDecorator.component()
 def gnn_evaluation_step(
     graph_cache,
     model_path,
@@ -330,15 +353,23 @@ def gnn_evaluation_step(
 
     train_scores = [dataset[i][1].item() for i in range(train_size)]
     low_t, high_t = np.percentile(train_scores, [33, 66])
+    class_names = ["Low", "Medium", "High"]
 
     y_true = []
     y_pred = []
+    y_true_raw = []
+    y_pred_raw = []
     for graph, label in test_set:
         graph = graph.to(device)
         with torch.no_grad():
             pred_score = model(graph).item()
+        y_true_raw.append(label.item())
+        y_pred_raw.append(pred_score)
         y_true.append(risk_to_class(label.item(), low_t, high_t))
         y_pred.append(risk_to_class(pred_score, low_t, high_t))
+
+    y_true_raw = np.array(y_true_raw, dtype=float)
+    y_pred_raw = np.array(y_pred_raw, dtype=float)
 
     report = classification_report(
         y_true,
@@ -355,12 +386,24 @@ def gnn_evaluation_step(
         average="macro",
         zero_division=0,
     )
+    class_precisions, class_recalls, class_f1s, _ = precision_recall_fscore_support(
+        y_true,
+        y_pred,
+        labels=[0, 1, 2],
+        average=None,
+        zero_division=0,
+    )
 
-    task.get_logger().report_text(report)
-    task.get_logger().report_scalar("metrics", "accuracy", float(accuracy), 0)
-    task.get_logger().report_scalar("metrics", "macro_precision", float(precision), 0)
-    task.get_logger().report_scalar("metrics", "macro_recall", float(recall), 0)
-    task.get_logger().report_scalar("metrics", "macro_f1", float(f1), 0)
+    result_metrics = _plot_evaluation_results(
+        y_true,
+        y_pred,
+        y_true_raw,
+        y_pred_raw,
+        ["Low", "Medium", "High"],
+        low_t,
+        high_t,
+        task,
+    )
 
     print(report)
     return {
@@ -371,7 +414,7 @@ def gnn_evaluation_step(
     }
 
 
-@PipelineDecorator.component(execution_queue="data_engineer")
+@PipelineDecorator.component()
 def register_gnn_model_step(model_path, metrics):
     from clearml import OutputModel, Task
 
@@ -403,8 +446,22 @@ def register_gnn_model_step(model_path, metrics):
     name="GNN_Training_Evaluation_Pipeline",
     project=PROJECT_NAME,
 )
-def gnn_training_evaluation_pipeline(graph_cache=DEFAULT_GRAPH_CACHE):
-    model_path = gnn_train_step(graph_cache)
+def gnn_training_evaluation_pipeline(
+    graph_cache=DEFAULT_GRAPH_CACHE,
+    hidden_dim=64,
+    dropout=0.3,
+    lr=1e-3,
+    epochs=10,
+    batch_size=8,
+):
+    model_path = gnn_train_step(
+        graph_cache,
+        hidden_dim=hidden_dim,
+        dropout=dropout,
+        lr=lr,
+        epochs=epochs,
+        batch_size=batch_size,
+    )
     metrics = gnn_evaluation_step(graph_cache, model_path)
     return register_gnn_model_step(model_path, metrics)
 
@@ -416,10 +473,20 @@ def gnn_training_evaluation_pipeline(graph_cache=DEFAULT_GRAPH_CACHE):
 def gnn_training_evaluation_from_clearml_model_pipeline(
     graph_cache_model_id,
     graph_cache=DEFAULT_GRAPH_CACHE,
+    hidden_dim=64,
+    dropout=0.3,
+    lr=1e-3,
+    epochs=10,
+    batch_size=8,
 ):
     model_path = gnn_train_step(
         graph_cache=graph_cache,
         graph_cache_model_id=graph_cache_model_id,
+        hidden_dim=hidden_dim,
+        dropout=dropout,
+        lr=lr,
+        epochs=epochs,
+        batch_size=batch_size,
     )
     metrics = gnn_evaluation_step(
         graph_cache=graph_cache,
@@ -434,14 +501,24 @@ def gnn_training_evaluation_from_clearml_model_pipeline(
     project=PROJECT_NAME,
 )
 def gnn_training_evaluation_from_clearml_artifact_pipeline(
-    graph_cache_task_id="",
+    graph_cache_task_id=DEFAULT_GRAPH_CACHE_TASK_ID,
     graph_cache_artifact_name=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
     graph_cache=DEFAULT_GRAPH_CACHE,
+    hidden_dim=64,
+    dropout=0.3,
+    lr=1e-3,
+    epochs=10,
+    batch_size=8,
 ):
     model_path = gnn_train_step(
         graph_cache=graph_cache,
         graph_cache_task_id=graph_cache_task_id,
         graph_cache_artifact_name=graph_cache_artifact_name,
+        hidden_dim=hidden_dim,
+        dropout=dropout,
+        lr=lr,
+        epochs=epochs,
+        batch_size=batch_size,
     )
     metrics = gnn_evaluation_step(
         graph_cache=graph_cache,
@@ -452,12 +529,71 @@ def gnn_training_evaluation_from_clearml_artifact_pipeline(
     return register_gnn_model_step(model_path, metrics)
 
 
-if __name__ == "__main__":
-    PipelineDecorator.run_locally()
-    # Use local graph_cache.pt by default instead of hardcoded ClearML task ID
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-    local_cache = os.path.join(project_root, 'models', 'gnn', 'graph_cache.pt')
-    result = gnn_training_evaluation_pipeline(
-        graph_cache=local_cache if os.path.exists(local_cache) else DEFAULT_GRAPH_CACHE,
+def get_args():
+    parser = argparse.ArgumentParser(
+        description="Run the GNN training and evaluation pipeline with custom parameters."
     )
+    parser.add_argument(
+        "--pipeline",
+        choices=["local", "artifact", "model"],
+        default="artifact",
+        help="Which pipeline to run: local graph cache, artifact-based graph cache, or model-based graph cache.",
+    )
+    parser.add_argument(
+        "--run_mode",
+        choices=["local", "remote"],
+        default="local",
+        help="Run mode: local (in-process) or remote (enqueue to ClearML queue).",
+    )
+    parser.add_argument("--queue", default="Yolov8_training_v0.1", help="ClearML queue name for remote execution.")
+    parser.add_argument("--graph_cache", default=DEFAULT_GRAPH_CACHE, help="Local graph cache path.")
+    parser.add_argument("--graph_cache_task_id", default=DEFAULT_GRAPH_CACHE_TASK_ID, help="ClearML task id for graph cache artifact.")
+    parser.add_argument("--graph_cache_artifact_name", default=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME, help="Artifact name for graph cache in ClearML task.")
+    parser.add_argument("--graph_cache_model_id", default=None, help="ClearML model id for graph cache model.")
+    parser.add_argument("--hidden_dim", type=int, default=64, help="Hidden dimension size for the GNN.")
+    parser.add_argument("--dropout", type=float, default=0.3, help="Dropout rate for the GNN.")
+    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate for the optimizer.")
+    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs.")
+    parser.add_argument("--batch_size", type=int, default=8, help="Training batch size.")
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = get_args()
+    
+    if args.run_mode == "local":
+        PipelineDecorator.run_locally()
+    else:
+        PipelineDecorator.run_remotely(queue_name=args.queue)
+    
+    if args.pipeline == "local":
+        result = gnn_training_evaluation_pipeline(
+            graph_cache=args.graph_cache,
+            hidden_dim=args.hidden_dim,
+            dropout=args.dropout,
+            lr=args.lr,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+        )
+    elif args.pipeline == "model":
+        result = gnn_training_evaluation_from_clearml_model_pipeline(
+            graph_cache_model_id=args.graph_cache_model_id,
+            graph_cache=args.graph_cache,
+            hidden_dim=args.hidden_dim,
+            dropout=args.dropout,
+            lr=args.lr,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+        )
+    else:
+        result = gnn_training_evaluation_from_clearml_artifact_pipeline(
+            graph_cache_task_id=args.graph_cache_task_id,
+            graph_cache_artifact_name=args.graph_cache_artifact_name,
+            graph_cache=args.graph_cache,
+            hidden_dim=args.hidden_dim,
+            dropout=args.dropout,
+            lr=args.lr,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+        )
     print("Final GNN result:", result)
