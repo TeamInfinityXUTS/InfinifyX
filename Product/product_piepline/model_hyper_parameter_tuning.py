@@ -1,3 +1,4 @@
+import argparse
 from clearml import OutputModel, Task
 from clearml.automation import (
     DiscreteParameterRange,
@@ -7,17 +8,20 @@ from clearml.automation import (
 )
 from clearml.automation.optuna import OptimizerOptuna
 
+from utils.evaluation_utils import _plot_evaluation_results
+
 
 PROJECT_NAME = "MLOps_Product_Assisted_Driving"
 BASE_TASK_NAME = "GNN_Hyper_Parameter_Tuning_Base"
 OPTIMIZER_TASK_NAME = "GNN_Hyper_Parameter_Tuning_Controller"
-EXECUTION_QUEUE = "data_engineer"
+EXECUTION_QUEUE = "Yolov8_training_v0.1"
 RUN_MODE_CONTROLLER = "controller"
 RUN_MODE_TRIAL = "trial"
 
 DEFAULT_GRAPH_CACHE = "graph_cache.pt"
-DEFAULT_GRAPH_CACHE_TASK_ID = ""
+DEFAULT_GRAPH_CACHE_TASK_ID = "ac6691e3ce1b4124ae670ba8c84e331d"
 DEFAULT_GRAPH_CACHE_ARTIFACT_NAME = "graph_cache"
+
 
 MAX_CONCURRENT_TASKS = 2
 TOTAL_MAX_JOBS = 2
@@ -32,6 +36,12 @@ def train_evaluate_single_task(
     graph_cache_model_id=None,
     graph_cache_task_id=DEFAULT_GRAPH_CACHE_TASK_ID,
     graph_cache_artifact_name=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
+    hidden_dim=128,
+    dropout=0.3,
+    lr=5e-4,
+    weight_decay=1e-4,
+    epochs=10,
+    batch_size=8,
 ):
     import os
     from urllib.parse import unquote, urlparse
@@ -59,12 +69,12 @@ def train_evaluate_single_task(
 
     config = {
         "run_mode": RUN_MODE_TRIAL,
-        "hidden_dim": 128,
-        "dropout": 0.3,
-        "lr": 5e-4,
-        "weight_decay": 1e-4,
-        "epochs": 10,
-        "batch_size": 8,
+        "hidden_dim": hidden_dim,
+        "dropout": dropout,
+        "lr": lr,
+        "weight_decay": weight_decay,
+        "epochs": epochs,
+        "batch_size": batch_size,
         "graph_cache": graph_cache,
         "graph_cache_model_id": graph_cache_model_id,
         "graph_cache_task_id": graph_cache_task_id,
@@ -213,7 +223,9 @@ def train_evaluate_single_task(
     loss_fn = nn.MSELoss()
 
     best_loss = float("inf")
-    checkpoint_path = f"risk_model_{task.id}.pt"
+    model_dir = os.path.join("models", "model_hyper_parameter_tuning")
+    os.makedirs(model_dir, exist_ok=True)
+    checkpoint_path = os.path.join(model_dir, f"risk_model_{task.id}.pt")
 
     for epoch in range(config["epochs"]):
         model.train()
@@ -277,6 +289,8 @@ def train_evaluate_single_task(
 
     y_true = []
     y_pred = []
+    y_true_raw = []
+    y_pred_raw = []
 
     for graph, label in test_set:
         graph = graph.to(device)
@@ -285,6 +299,8 @@ def train_evaluate_single_task(
 
         y_true.append(risk_to_class(label.item(), low_t, high_t))
         y_pred.append(risk_to_class(pred_score, low_t, high_t))
+        y_true_raw.append(label.item())
+        y_pred_raw.append(pred_score)
 
     report = classification_report(
         y_true,
@@ -295,44 +311,49 @@ def train_evaluate_single_task(
         zero_division=0,
     )
 
-    accuracy = accuracy_score(y_true, y_pred)
-    precision, recall, f1, _ = precision_recall_fscore_support(
+    y_true_raw = np.array(y_true_raw, dtype=float)
+    y_pred_raw = np.array(y_pred_raw, dtype=float)
+    result_metrics = _plot_evaluation_results(
         y_true,
         y_pred,
-        average="macro",
-        zero_division=0,
+        y_true_raw,
+        y_pred_raw,
+        ["Low", "Medium", "High"],
+        low_t,
+        high_t,
+        task,
     )
 
-    task.get_logger().report_text(report)
     metric_iteration = int(config["epochs"]) + 1
+    task.get_logger().report_text(report)
     task.get_logger().report_scalar(
         "metrics",
         "accuracy",
-        float(accuracy),
+        result_metrics["accuracy"],
         metric_iteration,
     )
     task.get_logger().report_scalar(
         "metrics",
         "macro_precision",
-        float(precision),
+        result_metrics["macro_precision"],
         metric_iteration,
     )
     task.get_logger().report_scalar(
         "metrics",
         "macro_recall",
-        float(recall),
+        result_metrics["macro_recall"],
         metric_iteration,
     )
     task.get_logger().report_scalar(
         "metrics",
         "macro_f1",
-        float(f1),
+        result_metrics["macro_f1"],
         metric_iteration,
     )
 
     print("\n===== HPO Trial Evaluation Result =====")
     print(report)
-    print(f"Accuracy: {accuracy:.3f}")
+    print(f"Accuracy: {result_metrics['accuracy']:.3f}")
 
     model_output = OutputModel(
         task=task,
@@ -340,8 +361,8 @@ def train_evaluate_single_task(
         tags=["GNN", "risk", "hpo"],
     )
     model_output.update_weights(checkpoint_path)
-    model_output.set_metadata("accuracy", float(accuracy))
-    model_output.set_metadata("macro_f1", float(f1))
+    model_output.set_metadata("accuracy", float(result_metrics["accuracy"]))
+    model_output.set_metadata("macro_f1", float(result_metrics["macro_f1"]))
     print("Model registered:", model_output.id)
 
     task_id = task.id
@@ -532,7 +553,9 @@ def run_trial_from_current_task():
     loss_fn = nn.MSELoss()
 
     best_loss = float("inf")
-    checkpoint_path = f"risk_model_{task.id}.pt"
+    model_dir = os.path.join("models", "model_hyper_parameter_tuning")
+    os.makedirs(model_dir, exist_ok=True)
+    checkpoint_path = os.path.join(model_dir, f"risk_model_{task.id}.pt")
 
     for epoch in range(config["epochs"]):
         model.train()
@@ -593,6 +616,8 @@ def run_trial_from_current_task():
 
     y_true = []
     y_pred = []
+    y_true_raw = []
+    y_pred_raw = []
 
     for graph, label in test_set:
         graph = graph.to(device)
@@ -600,6 +625,8 @@ def run_trial_from_current_task():
             pred_score = eval_model(graph).item()
         y_true.append(risk_to_class(label.item(), low_t, high_t))
         y_pred.append(risk_to_class(pred_score, low_t, high_t))
+        y_true_raw.append(label.item())
+        y_pred_raw.append(pred_score)
 
     report = classification_report(
         y_true,
@@ -609,12 +636,18 @@ def run_trial_from_current_task():
         digits=3,
         zero_division=0,
     )
-    accuracy = accuracy_score(y_true, y_pred)
-    precision, recall, f1, _ = precision_recall_fscore_support(
+
+    y_true_raw = np.array(y_true_raw, dtype=float)
+    y_pred_raw = np.array(y_pred_raw, dtype=float)
+    result_metrics = _plot_evaluation_results(
         y_true,
         y_pred,
-        average="macro",
-        zero_division=0,
+        y_true_raw,
+        y_pred_raw,
+        ["Low", "Medium", "High"],
+        low_t,
+        high_t,
+        task,
     )
 
     metric_iteration = int(config["epochs"]) + 1
@@ -622,31 +655,31 @@ def run_trial_from_current_task():
     task.get_logger().report_scalar(
         "metrics",
         "accuracy",
-        float(accuracy),
+        result_metrics["accuracy"],
         metric_iteration,
     )
     task.get_logger().report_scalar(
         "metrics",
         "macro_precision",
-        float(precision),
+        result_metrics["macro_precision"],
         metric_iteration,
     )
     task.get_logger().report_scalar(
         "metrics",
         "macro_recall",
-        float(recall),
+        result_metrics["macro_recall"],
         metric_iteration,
     )
     task.get_logger().report_scalar(
         "metrics",
         "macro_f1",
-        float(f1),
+        result_metrics["macro_f1"],
         metric_iteration,
     )
 
     print("\n===== HPO Trial Evaluation Result =====")
     print(report)
-    print(f"Accuracy: {accuracy:.3f}")
+    print(f"Accuracy: {result_metrics['accuracy']:.3f}")
 
     model_output = OutputModel(
         task=task,
@@ -654,11 +687,12 @@ def run_trial_from_current_task():
         tags=["GNN", "risk", "hpo"],
     )
     model_output.update_weights(checkpoint_path)
-    model_output.set_metadata("accuracy", float(accuracy))
-    model_output.set_metadata("macro_f1", float(f1))
+    model_output.set_metadata("accuracy", float(result_metrics["accuracy"]))
+    model_output.set_metadata("macro_f1", float(result_metrics["macro_f1"]))
     print("Model registered:", model_output.id)
 
     task.close()
+    return result_metrics["accuracy"]
 
 
 def run_hyperparameter_optimization(base_task_id):
@@ -751,30 +785,121 @@ def run_hyperparameter_optimization(base_task_id):
 def run_gnn_hyper_parameter_tuning(
     graph_cache=DEFAULT_GRAPH_CACHE,
     graph_cache_model_id=None,
-    graph_cache_task_id="",
+    graph_cache_task_id=DEFAULT_GRAPH_CACHE_TASK_ID,
     graph_cache_artifact_name=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
+    hidden_dim=128,
+    dropout=0.3,
+    lr=5e-4,
+    weight_decay=1e-4,
+    epochs=10,
+    batch_size=8,
 ):
     base_task_id = train_evaluate_single_task(
         graph_cache=graph_cache,
         graph_cache_model_id=graph_cache_model_id,
         graph_cache_task_id=graph_cache_task_id,
         graph_cache_artifact_name=graph_cache_artifact_name,
+        hidden_dim=hidden_dim,
+        dropout=dropout,
+        lr=lr,
+        weight_decay=weight_decay,
+        epochs=epochs,
+        batch_size=batch_size,
     )
     print("\nBase Task Created:", base_task_id)
     run_hyperparameter_optimization(base_task_id)
     return base_task_id
 
 
-if __name__ == "__main__":
-    entry_task = Task.init(
-        project_name=PROJECT_NAME,
-        task_name="GNN_HPO_Entry",
-        reuse_last_task_id=False,
+def get_args():
+    parser = argparse.ArgumentParser(
+        description="Run ClearML GNN hyperparameter tuning and evaluation with optional CLI overrides."
     )
-    run_mode = entry_task.get_parameter("General/run_mode")
+    parser.add_argument(
+        "--graph_cache",
+        default=DEFAULT_GRAPH_CACHE,
+        help="Local graph cache path.",
+    )
+    parser.add_argument(
+        "--graph_cache_task_id",
+        default=DEFAULT_GRAPH_CACHE_TASK_ID,
+        help="ClearML task id for graph cache artifact.",
+    )
+    parser.add_argument(
+        "--graph_cache_artifact_name",
+        default=DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
+        help="Artifact name for graph cache in ClearML task.",
+    )
+    parser.add_argument(
+        "--graph_cache_model_id",
+        default=None,
+        help="ClearML model id for graph cache model.",
+    )
+    parser.add_argument(
+        "--hidden_dim",
+        type=int,
+        default=128,
+        help="Hidden dimension size for the GNN.",
+    )
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=0.3,
+        help="Dropout rate for the GNN.",
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=5e-4,
+        help="Learning rate for optimizer.",
+    )
+    parser.add_argument(
+        "--weight_decay",
+        type=float,
+        default=1e-4,
+        help="Weight decay for optimizer.",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=10,
+        help="Number of training epochs.",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=8,
+        help="Training batch size.",
+    )
+    parser.add_argument(
+        "--run_mode",
+        choices=[RUN_MODE_CONTROLLER, RUN_MODE_TRIAL],
+        default=RUN_MODE_CONTROLLER,
+        help="Run mode: controller to start HPO, trial to run a trial from current task.",
+    )
+    return parser.parse_args()
 
-    if run_mode == RUN_MODE_TRIAL:
+
+if __name__ == "__main__":
+    args = get_args()
+    if args.run_mode == RUN_MODE_TRIAL:
         run_trial_from_current_task()
     else:
+        entry_task = Task.init(
+            project_name=PROJECT_NAME,
+            task_name="GNN_HPO_Entry",
+            reuse_last_task_id=False,
+        )
         entry_task.close()
-        run_gnn_hyper_parameter_tuning()
+        run_gnn_hyper_parameter_tuning(
+            graph_cache=args.graph_cache,
+            graph_cache_model_id=args.graph_cache_model_id,
+            graph_cache_task_id=args.graph_cache_task_id,
+            graph_cache_artifact_name=args.graph_cache_artifact_name,
+            hidden_dim=args.hidden_dim,
+            dropout=args.dropout,
+            lr=args.lr,
+            weight_decay=args.weight_decay,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+        )
