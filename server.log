@@ -1,0 +1,21 @@
+/home/sagemaker-user/InfinifyX/server/inference_server.py:263: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+INFO:     Started server process [6258]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+[server] Registered CBAM + SE into ultralytics.nn.tasks
+[server] Loading YOLO  ← /home/sagemaker-user/InfinifyX/models/yolo/Yolov8_best.pt
+[server] YOLO ready  (classes: ['car', 'bus', 'truck', 'person', 'traffic light', 'traffic sign', 'bike', 'motor', 'train', 'other'])
+[server] GNN ready    ← /home/sagemaker-user/InfinifyX/models/gnn/risk_model.pt  (device: cuda)
+[server] All models loaded — ready to serve.
+INFO:     127.0.0.1:40374 - "GET / HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [6258]

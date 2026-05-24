@@ -328,7 +328,7 @@ if __name__ == "__main__":
     # Option B (full run — 70 000 images, takes several hours):
     #   data_preprocessing/datasets/bdd100k/train/images/
     data_dir = os.path.join(
-        project_root, "data_preprocessing", "datasets", "bdd100k_subset_yolo", "images", "train"
+        project_root, "data_preprocessing", "datasets", "bdd100k_full_yolo", "images", "train"
     )
     # ----------------------------------------
 
