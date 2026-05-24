@@ -1,29 +1,44 @@
+# ==========================================
+# 核心大文件与模型权重（完全阻止上传）
+# ==========================================
+# 忽略整个 models 文件夹（包含 gnn/, e2e/ 以及所有子目录和权重文件）
+models/
+# 忽略根目录及任何子目录下的所有 yolo 权重文件
+**/yolo*.pt
+*.pt
+*.pth
+
+# ==========================================
+# 数据集与预处理中间文件 (BDD100K / NuScenes 等)
+# ==========================================
 bdd100k/
-kaggle_key.txt
-.ipynb_checkpoints/
 data_preprocessing/bdd100k/
 data_preprocessing/bdd100k_tiny/
 data_preprocessing/bdd100k_tiny_data/
-__pycache__/
-.ipynb_checkpoints/
 data_preprocessing/bdd100k*
 data_preprocessing/nuscenes-mini
 data_preprocessing/dataset_seg/
-data_preprocessing/clearml.conf
-data_preprocessing/bdd100k_tiny.yaml
-**/.ipynb_checkpoints/
-**/__pycache__/
-.DS_Store
+data_preprocessing/datasets/
 **/augmented_dataset_temp/
 **/pipeline_augmented_temp/
+
+# ==========================================
+# 凭证、配置与本地日志
+# ==========================================
+kaggle_key.txt
+clearml.conf
 **/clearml.conf
-data_preprocessing/datasets/
+data_preprocessing/clearml.conf
+data_preprocessing/bdd100k_tiny.yaml
 AI-Studio-ClearML/
-
-# E2E pipeline outputs (timestamped model runs)
-models/e2e/
 runs/
+*.log
 
-# Stray weight files at repo root
-/yolo*.pt
-
+# ==========================================
+# 系统与 IDE 缓存
+# ==========================================
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+__pycache__/
+**/__pycache__/
+.DS_Store
