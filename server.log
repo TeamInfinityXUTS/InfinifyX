@@ -5,7 +5,7 @@
         [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
         
   @app.on_event("startup")
-INFO:     Started server process [3000]
+INFO:     Started server process [4057]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
@@ -14,12 +14,10 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 [server] YOLO ready  (classes: ['car', 'bus', 'truck', 'person', 'traffic light', 'traffic sign', 'bike', 'motor', 'train', 'other'])
 [server] GNN ready    ← /home/sagemaker-user/InfinifyX/models/gnn/risk_model.pt  (device: cuda)
 [server] All models loaded — ready to serve.
-INFO:     127.0.0.1:53986 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60986 - "WebSocket /ws" [accepted]
+INFO:     127.0.0.1:35698 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48926 - "WebSocket /ws" [accepted]
 INFO:     connection open
-[server] Client connected  Address(host='127.0.0.1', port=60986)
-INFO:     127.0.0.1:47118 - "GET / HTTP/1.1" 200 OK
 INFO:     connection closed
-INFO:     127.0.0.1:47132 - "WebSocket /ws" [accepted]
+INFO:     127.0.0.1:41268 - "WebSocket /ws" [accepted]
 INFO:     connection open
 INFO:     connection closed
