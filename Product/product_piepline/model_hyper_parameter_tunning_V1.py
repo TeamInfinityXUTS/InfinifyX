@@ -4,7 +4,45 @@ from urllib.parse import unquote, urlparse
 from clearml import InputModel, PipelineDecorator, Task, OutputModel
 from clearml.automation import HyperParameterOptimizer
 from clearml.automation import UniformIntegerParameterRange, UniformParameterRange
+import os
+import sys
+os.environ["MPLBACKEND"] = "Agg"
+    
+import torch
+import numpy as np
+import torch.nn as nn
+import torch.nn.functional as F
+from clearml import Task
+from torch_geometric.loader import DataLoader
+from torch_geometric.nn import GCNConv, global_mean_pool
+from sklearn.metrics import (
+    accuracy_score,
+    precision_recall_fscore_support,
+    classification_report,
+    confusion_matrix,
+)
+    
+import matplotlib
+matplotlib.use('Agg', force=True)
+matplotlib.rcParams['backend'] = 'Agg'
+matplotlib.rcParams['interactive'] = False
+    
+import matplotlib.cm
+import matplotlib.colors
+import matplotlib.text
+import matplotlib.axis
+import matplotlib.axes
+import matplotlib.figure
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+import matplotlib.pyplot as plt
+    
 
+def noop_switch_backend(backend):
+    pass
+matplotlib.pyplot.switch_backend = noop_switch_backend
+
+matplotlib.pyplot.rcParams['backend'] = 'Agg'
 
 PROJECT_NAME = "HPO_Pipeline"
 DEFAULT_GRAPH_CACHE = "graph_cache.pt"
@@ -12,6 +50,7 @@ DEFAULT_GRAPH_CACHE_TASK_ID = "b6e2aee4168040729935da12e87d4b1f"
 DEFAULT_GRAPH_CACHE_ARTIFACT_NAME = "graph_cache"
 EXECUTION_QUEUE = "Yolov8_training_v0.1"
 
+# HPO Configuration
 RANDOM_SEED = 42
 EARLY_STOPPING_PATIENCE = 10
 EARLY_STOPPING_METRIC = "hybrid"
@@ -27,39 +66,12 @@ def train_evaluate_single_trial(
     test_split: float = 0.15,
 ) -> dict:
     """Base task for HyperParameterOptimizer - trains and evaluates a single model configuration."""
-    import os
-    import sys
-    
-    os.environ["MPLBACKEND"] = "Agg"
-    
-    import torch
-    import numpy as np
-    import torch.nn as nn
-    import torch.nn.functional as F
-    from clearml import Task
-    from torch_geometric.loader import DataLoader
-    from torch_geometric.nn import GCNConv, global_mean_pool
-    from sklearn.metrics import (
-        accuracy_score,
-        precision_recall_fscore_support,
-        classification_report,
-        confusion_matrix,
-    )
-    
-    import matplotlib
-    matplotlib.use('Agg', force=True)
-    matplotlib.rcParams['backend'] = 'Agg'
-    matplotlib.rcParams['interactive'] = False
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
-    from matplotlib.figure import Figure
-    import matplotlib.pyplot as plt
-
-    matplotlib.pyplot.rcParams['backend'] = 'Agg'
 
     RANDOM_SEED = 42
     EARLY_STOPPING_PATIENCE = 50
     EARLY_STOPPING_METRIC = "hybrid"
 
+    # Set Random Seeds
     torch.manual_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
     if torch.cuda.is_available():
@@ -136,7 +148,7 @@ def train_evaluate_single_trial(
                 nn.Linear(hidden_dim, 64),
                 nn.ReLU(),
                 nn.Dropout(dropout),
-                nn.Linear(64, 3),
+                nn.Linear(64, 3),  # 3-class output
             )
 
         def forward(self, graph):
@@ -191,6 +203,7 @@ def train_evaluate_single_trial(
     val_data = create_labeled_dataset(val_indices)
     test_data = create_labeled_dataset(test_indices)
 
+    # Train a single model with current configuration
     logger.report_text(f"\nTraining with config: hidden_dim={config['hidden_dim']}, dropout={config['dropout']}, lr={config['lr']}, batch_size={config['batch_size']}")
 
     train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
@@ -240,7 +253,6 @@ def train_evaluate_single_trial(
             val_labels_true, val_preds, average="macro", zero_division=0
         )
 
-        # Report metrics to ClearML for HyperParameterOptimizer
         logger.report_scalar("train", "loss", float(train_loss), epoch + 1)
         logger.report_scalar("metrics", "val_loss", float(val_loss), epoch + 1)
         logger.report_scalar("metrics", "val_f1", float(val_f1), epoch + 1)
@@ -308,14 +320,12 @@ def train_evaluate_single_trial(
     logger.report_text(test_report)
     logger.report_text(f"Test: Accuracy={test_accuracy:.4f}, Precision={test_precision:.4f}, Recall={test_recall:.4f}, F1={test_f1:.4f}")
 
-    # Generate visualization plots
     plot_dir = os.path.join(os.getcwd(), "clearml_plots")
     os.makedirs(plot_dir, exist_ok=True)
 
     def create_agg_figure(figsize=(8, 6)):
         """Create figure using low-level Agg backend to avoid pyplot issues in Python 3.12."""
-        from matplotlib.backends.backend_agg import FigureCanvasAgg
-        from matplotlib.figure import Figure
+        # Use pre-imported classes and modules
         fig = Figure(figsize=figsize, dpi=100)
         canvas = FigureCanvasAgg(fig)
         return fig, fig.add_subplot(111)
@@ -323,8 +333,7 @@ def train_evaluate_single_trial(
     # Confusion Matrix
     cm = confusion_matrix(test_labels_true, test_preds, labels=[0, 1, 2])
     fig, ax = create_agg_figure(figsize=(8, 6))
-    import matplotlib.cm as cm_module
-    im = ax.imshow(cm, interpolation="nearest", cmap=cm_module.Blues)
+    im = ax.imshow(cm, interpolation="nearest", cmap=matplotlib.cm.Blues)
     ax.figure.colorbar(im, ax=ax)
     ax.set(xticks=np.arange(3), yticks=np.arange(3),
            xticklabels=["Low", "Medium", "High"],
@@ -362,7 +371,7 @@ def train_evaluate_single_trial(
     fig.tight_layout()
     metrics_path = os.path.join(plot_dir, "hpo_metrics_bar.png")
     fig.savefig(metrics_path, dpi=150)
-    fig.clf()  # Clear instead of close for Agg backend
+    fig.clf()
     logger.report_image("HPO_Results", "metrics_bar", local_path=metrics_path, iteration=0)
 
     logger.report_text(f"\n{'='*100}")
@@ -392,7 +401,6 @@ def run_hpo_optimization(
     val_split=0.15,
     test_split=0.15,
 ):
-    # Use Task.create() instead of Task.init() to avoid conflict with existing task
     optimizer_task = Task.create(
         project_name=PROJECT_NAME,
         task_name="GNN_HPO_Optimizer",
@@ -544,10 +552,8 @@ if __name__ == "__main__":
     
     # Step 1: Create base task
     print("\n[1/2] Creating base task...")
-    # Use entry_task as the base task for HPO
     base_task_id = entry_task.id
     
-    # Connect default configuration to the base task
     entry_task.connect(
         {
             "hidden_dim": 128,
@@ -560,7 +566,6 @@ if __name__ == "__main__":
     
     print(f"Base Task ID: {base_task_id}")
     
-    # Initialize the base task with one training run to report metrics
     print("\n[1.5/2] Initializing base task with metrics...")
     result = train_evaluate_single_trial(
         graph_cache=args.graph_cache,
