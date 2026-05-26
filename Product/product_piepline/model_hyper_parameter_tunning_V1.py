@@ -1,7 +1,9 @@
 import os
 from urllib.parse import unquote, urlparse
 
-from clearml import InputModel, PipelineDecorator, Task
+from clearml import InputModel, PipelineDecorator, Task, OutputModel
+from clearml.automation import HyperParameterOptimizer
+from clearml.automation import UniformIntegerParameterRange, UniformParameterRange
 
 
 PROJECT_NAME = "HPO_Pipeline"
@@ -30,17 +32,16 @@ DEFAULT_SEARCH_SPACE = [
 ]
 
 
-@PipelineDecorator.component(cache=False, execution_queue=EXECUTION_QUEUE)
-def hpo_step(
+def train_evaluate_single_trial(
     graph_cache: str = "graph_cache.pt",
     graph_cache_model_id: str = None,
     graph_cache_task_id: str = "b6e2aee4168040729935da12e87d4b1f",
     graph_cache_artifact_name: str = "graph_cache",
-    n_trials: int = 50,
     max_epochs_per_trial: int = 100,
     val_split: float = 0.15,
     test_split: float = 0.15,
 ) -> dict:
+    """Base task for HyperParameterOptimizer - trains and evaluates a single model configuration."""
     import os
     import torch
     import numpy as np
@@ -56,12 +57,10 @@ def hpo_step(
         confusion_matrix,
     )
     
-    # Clear matplotlib backend environment variable and set Agg backend
-    os.environ.pop('MPLBACKEND', None)
-    os.environ.pop('MPLBACKEND_INLINE', None)
+    # Set matplotlib backend via environment variable
+    os.environ["MPLBACKEND"] = "Agg"
     
     import matplotlib
-    matplotlib.use('Agg', force=True)
     import matplotlib.pyplot as plt
 
     RANDOM_SEED = 42
@@ -74,8 +73,20 @@ def hpo_step(
     if torch.cuda.is_available():
         torch.cuda.manual_seed(RANDOM_SEED)
 
-    task = Task.current_task() or Task.init(project_name="HPO_Pipeline", task_name="GNN_HPO_V2")
+    task = Task.current_task()
+    if task is None:
+        task = Task.init(project_name="HPO_Pipeline", task_name="GNN_HPO_Base_Task")
+    
     logger = task.get_logger()
+    
+    # Connect configuration - will be overridden by HyperParameterOptimizer
+    config = {
+        "hidden_dim": 128,
+        "dropout": 0.3,
+        "lr": 5e-4,
+        "batch_size": 16,
+    }
+    config = task.connect(config, name="General")
 
     def validate_file(path, label):
         if not path or not os.path.isfile(path):
@@ -189,129 +200,94 @@ def hpo_step(
     val_data = create_labeled_dataset(val_indices)
     test_data = create_labeled_dataset(test_indices)
 
-    local_search_space = [
-        # Small model, low LR
-        {"hidden_dim": 64,  "dropout": 0.1, "lr": 1e-3,  "batch_size": 32},
-        {"hidden_dim": 64,  "dropout": 0.15, "lr": 5e-4,  "batch_size": 16},
-        # Medium model, moderate LR
-        {"hidden_dim": 128, "dropout": 0.2, "lr": 5e-4,  "batch_size": 16},
-        {"hidden_dim": 128, "dropout": 0.3, "lr": 3e-4,  "batch_size": 32},
-        {"hidden_dim": 128, "dropout": 0.25, "lr": 1e-3,  "batch_size": 8},
-        # Large model, careful tuning
-        {"hidden_dim": 256, "dropout": 0.3, "lr": 3e-4,  "batch_size": 16},
-        {"hidden_dim": 256, "dropout": 0.4, "lr": 1e-4,  "batch_size": 32},
-        {"hidden_dim": 256, "dropout": 0.35, "lr": 5e-5,  "batch_size": 64},
-    ]
-    search_space = local_search_space[:n_trials]
+    # Train a single model with current configuration
+    logger.report_text(f"\nTraining with config: hidden_dim={config['hidden_dim']}, dropout={config['dropout']}, lr={config['lr']}, batch_size={config['batch_size']}")
 
-    logger.report_text(f"\nSearch Space ({len(search_space)} configs):")
-    for i, cfg in enumerate(search_space):
-        logger.report_text(f"  Config {i+1}: {cfg}")
+    train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
+    val_loader = DataLoader(val_data, batch_size=config["batch_size"], shuffle=False)
+    test_loader = DataLoader(test_data, batch_size=config["batch_size"], shuffle=False)
+
+    model = GNNClassifier(hidden_dim=config["hidden_dim"], dropout=config["dropout"]).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
+    loss_fn = nn.CrossEntropyLoss()
 
     best_val_f1 = -1
     best_val_loss = float('inf')
-    best_cfg = None
     best_model_state = None
-    trial_results = []
+    patience_counter = 0
 
-    for trial_idx, cfg in enumerate(search_space):
-        logger.report_text(f"\n{'='*100}")
-        logger.report_text(f"TRIAL {trial_idx + 1}/{len(search_space)}: {cfg}")
-        logger.report_text(f"{'='*100}")
+    for epoch in range(max_epochs_per_trial):
+        model.train()
+        train_loss = 0.0
+        for graph, label in train_loader:
+            graph = graph.to(device)
+            label = label.to(device)
+            logits = model(graph)
+            loss = loss_fn(logits, label)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
+        train_loss /= len(train_loader)
 
-        train_loader = DataLoader(train_data, batch_size=cfg["batch_size"], shuffle=True)
-        val_loader = DataLoader(val_data, batch_size=cfg["batch_size"], shuffle=False)
-
-        model = GNNClassifier(hidden_dim=cfg["hidden_dim"], dropout=cfg["dropout"]).to(device)
-        optimizer = torch.optim.Adam(model.parameters(), lr=cfg["lr"])
-        loss_fn = nn.CrossEntropyLoss()
-
-        best_val_f1_trial = -1
-        best_val_loss_trial = float('inf')
-        patience_counter = 0
-
-        for epoch in range(max_epochs_per_trial):
-            model.train()
-            train_loss = 0.0
-            for graph, label in train_loader:
+        model.eval()
+        val_preds, val_labels_true = [], []
+        val_loss = 0.0
+        with torch.no_grad():
+            for graph, label in val_loader:
                 graph = graph.to(device)
                 label = label.to(device)
                 logits = model(graph)
-                loss = loss_fn(logits, label)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                train_loss += loss.item()
-            train_loss /= len(train_loader)
+                batch_loss = loss_fn(logits, label)
+                val_loss += batch_loss.item()
+                preds = logits.argmax(dim=1).cpu().numpy()
+                val_preds.extend(preds)
+                val_labels_true.extend(label.cpu().numpy())
+        
+        val_loss /= len(val_loader)
+        val_accuracy = accuracy_score(val_labels_true, val_preds)
+        _, _, val_f1, _ = precision_recall_fscore_support(
+            val_labels_true, val_preds, average="macro", zero_division=0
+        )
 
-            model.eval()
-            val_preds, val_labels_true = [], []
-            val_loss = 0.0
-            with torch.no_grad():
-                for graph, label in val_loader:
-                    graph = graph.to(device)
-                    label = label.to(device)
-                    logits = model(graph)
-                    batch_loss = loss_fn(logits, label)
-                    val_loss += batch_loss.item()
-                    preds = logits.argmax(dim=1).cpu().numpy()
-                    val_preds.extend(preds)
-                    val_labels_true.extend(label.cpu().numpy())
-            
-            val_loss /= len(val_loader)
-            val_accuracy = accuracy_score(val_labels_true, val_preds)
-            _, _, val_f1, _ = precision_recall_fscore_support(
-                val_labels_true, val_preds, average="macro", zero_division=0
-            )
+        # Report metrics to ClearML for HyperParameterOptimizer
+        logger.report_scalar("train", "loss", float(train_loss), epoch + 1)
+        logger.report_scalar("metrics", "val_loss", float(val_loss), epoch + 1)
+        logger.report_scalar("metrics", "val_f1", float(val_f1), epoch + 1)
+        logger.report_scalar("metrics", "accuracy", float(val_accuracy), epoch + 1)
 
-            print(f"[T{trial_idx+1}E{epoch+1:3d}] train_loss={train_loss:.4f} val_loss={val_loss:.4f} val_f1={val_f1:.4f}")
+        print(f"[E{epoch+1:3d}] train_loss={train_loss:.4f} val_loss={val_loss:.4f} val_f1={val_f1:.4f}")
 
-            improved = False
-            if EARLY_STOPPING_METRIC == "val_loss":
-                improved = val_loss < best_val_loss_trial
-            elif EARLY_STOPPING_METRIC == "val_f1":
-                improved = val_f1 > best_val_f1_trial
-            else:
-                improved = (val_f1 > best_val_f1_trial) or (val_loss < best_val_loss_trial)
-            
-            if improved:
-                best_val_f1_trial = max(best_val_f1_trial, val_f1)
-                best_val_loss_trial = min(best_val_loss_trial, val_loss)
-                best_model_state = {k: v.cpu() for k, v in model.state_dict().items()}
-                patience_counter = 0
-            else:
-                patience_counter += 1
-                if patience_counter >= EARLY_STOPPING_PATIENCE:
-                    logger.report_text(f"Early stopping at epoch {epoch+1} (patience={EARLY_STOPPING_PATIENCE})")
-                    break
+        improved = False
+        if EARLY_STOPPING_METRIC == "val_loss":
+            improved = val_loss < best_val_loss
+        elif EARLY_STOPPING_METRIC == "val_f1":
+            improved = val_f1 > best_val_f1
+        else:
+            improved = (val_f1 > best_val_f1) or (val_loss < best_val_loss)
+        
+        if improved:
+            best_val_f1 = max(best_val_f1, val_f1)
+            best_val_loss = min(best_val_loss, val_loss)
+            best_model_state = {k: v.cpu() for k, v in model.state_dict().items()}
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            if patience_counter >= EARLY_STOPPING_PATIENCE:
+                logger.report_text(f"Early stopping at epoch {epoch+1} (patience={EARLY_STOPPING_PATIENCE})")
+                break
 
-        logger.report_text(f"Trial {trial_idx+1}: val_f1={best_val_f1_trial:.4f}, val_loss={best_val_loss_trial:.4f}, epochs={epoch+1}")
-        trial_results.append({
-            "trial_id": trial_idx + 1,
-            "config": cfg,
-            "val_f1": best_val_f1_trial,
-            "val_loss": best_val_loss_trial,
-            "epochs": epoch + 1,
-        })
-
-        if best_val_f1_trial > best_val_f1:
-            best_val_f1 = best_val_f1_trial
-            best_val_loss = best_val_loss_trial
-            best_cfg = cfg
-            best_model_state_final = best_model_state
-
+    # Test evaluation
     logger.report_text(f"\n{'='*100}")
-    logger.report_text("FINAL EVALUATION ON TEST SET")
-    logger.report_text(f"Best Config: {best_cfg}")
+    logger.report_text("TEST SET EVALUATION")
     logger.report_text(f"{'='*100}")
 
-    final_model = GNNClassifier(hidden_dim=best_cfg["hidden_dim"], dropout=best_cfg["dropout"]).to(device)
-    final_model.load_state_dict(best_model_state_final)
+    final_model = GNNClassifier(hidden_dim=config["hidden_dim"], dropout=config["dropout"]).to(device)
+    final_model.load_state_dict(best_model_state)
     final_model.eval()
 
     test_preds, test_labels_true = [], []
     with torch.no_grad():
-        test_loader = DataLoader(test_data, batch_size=best_cfg["batch_size"], shuffle=False)
         for graph, label in test_loader:
             graph = graph.to(device)
             logits = final_model(graph)
@@ -329,7 +305,6 @@ def hpo_step(
     test_class_precisions, test_class_recalls, test_class_f1s, _ = precision_recall_fscore_support(
         test_labels_true, test_preds, labels=[0, 1, 2], average=None, zero_division=0
     )
-    # Ensure these are numpy arrays for iteration
     test_class_precisions = np.asarray(test_class_precisions)
     test_class_recalls = np.asarray(test_class_recalls)
     test_class_f1s = np.asarray(test_class_f1s)
@@ -343,9 +318,11 @@ def hpo_step(
     logger.report_text(test_report)
     logger.report_text(f"Test: Accuracy={test_accuracy:.4f}, Precision={test_precision:.4f}, Recall={test_recall:.4f}, F1={test_f1:.4f}")
 
+    # Generate visualization plots
     plot_dir = os.path.join(os.getcwd(), "clearml_plots")
     os.makedirs(plot_dir, exist_ok=True)
 
+    # Confusion Matrix
     cm = confusion_matrix(test_labels_true, test_preds, labels=[0, 1, 2])
     fig, ax = plt.subplots(figsize=(8, 6))
     im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
@@ -366,6 +343,7 @@ def hpo_step(
     plt.close(fig)
     logger.report_image("HPO_Results", "confusion_matrix", local_path=cm_path, iteration=0)
 
+    # Per-class Metrics
     x = np.arange(3)
     width = 0.25
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -390,52 +368,111 @@ def hpo_step(
     logger.report_image("HPO_Results", "metrics_bar", local_path=metrics_path, iteration=0)
 
     logger.report_text(f"\n{'='*100}")
-    logger.report_text("HPO RESULTS SUMMARY TABLE")
-    logger.report_text(f"{'='*100}")
-    logger.report_text(f"{'Trial':<8} {'Hidden':<10} {'Dropout':<10} {'LR':<12} {'BS':<6} {'Val F1':<10} {'Val Loss':<12} {'Epochs':<8}")
-    logger.report_text("-" * 100)
-    
-    sorted_results = sorted(trial_results, key=lambda x: x["val_f1"], reverse=True)
-    for i, result in enumerate(sorted_results):
-        cfg = result["config"]
-        rank = "best" if i == 0 else f" {i+1} "
-        logger.report_text(
-            f"{rank:<8} {cfg['hidden_dim']:<10} {cfg['dropout']:<10.2f} {cfg['lr']:<12.0e} "
-            f"{cfg['batch_size']:<6} {result['val_f1']:<10.4f} {result['val_loss']:<12.4f} {result['epochs']:<8}"
-        )
-    
-    logger.report_text("-" * 100)
-    logger.report_text(f"Best Config (by Val F1): Trial {[r['trial_id'] for r in sorted_results][0]}")
-    logger.report_text(f"Best Val F1: {sorted_results[0]['val_f1']:.4f}")
-    logger.report_text(f"Best Val Loss: {sorted_results[0]['val_loss']:.4f}")
-    logger.report_text(f"{'='*100}")
-
-    logger.report_text(f"\n{'='*100}")
-    logger.report_text("HPO COMPLETE")
+    logger.report_text("TRIAL COMPLETE")
+    logger.report_text(f"Config: hidden_dim={config['hidden_dim']}, dropout={config['dropout']}, lr={config['lr']}, batch_size={config['batch_size']}")
+    logger.report_text(f"Val F1: {best_val_f1:.4f}, Val Loss: {best_val_loss:.4f}")
+    logger.report_text(f"Test Accuracy: {test_accuracy:.4f}, Test F1: {test_f1:.4f}")
     logger.report_text(f"{'='*100}")
 
     return {
-        "best_config": best_cfg,
+        "config": config,
         "val_f1": float(best_val_f1),
         "test_f1": float(test_f1),
         "test_accuracy": float(test_accuracy),
     }
 
 
+def run_hpo_optimization(
+    base_task_id,
+    max_concurrent_tasks=2,
+    total_max_jobs=10,
+    graph_cache="graph_cache.pt",
+    graph_cache_model_id=None,
+    graph_cache_task_id="b6e2aee4168040729935da12e87d4b1f",
+    graph_cache_artifact_name="graph_cache",
+    max_epochs_per_trial=2,
+    val_split=0.15,
+    test_split=0.15,
+):
+    optimizer_task = Task.init(
+        project_name=PROJECT_NAME,
+        task_name="GNN_HPO_Optimizer",
+        task_type=Task.TaskTypes.optimizer,
+        reuse_last_task_id=False,
+    )
+    
+    print("\n===== HPO Configuration =====")
+    print(f"Max Concurrent Tasks: {max_concurrent_tasks}")
+    print(f"Total Max Jobs: {total_max_jobs}")
+    print(f"Execution Queue: {EXECUTION_QUEUE}")
+
+    optimizer = HyperParameterOptimizer(
+        base_task_id=base_task_id,
+        hyper_parameters=[
+            UniformIntegerParameterRange(
+                "General/hidden_dim",
+                min_value=64,
+                max_value=256,
+                step_size=64,
+            ),
+            UniformParameterRange(
+                "General/dropout",
+                min_value=0.1,
+                max_value=0.5,
+                step_size=0.05,
+            ),
+            UniformParameterRange(
+                "General/lr",
+                min_value=0.0001,
+                max_value=0.003,
+                step_size=0.0001,
+            ),
+            UniformIntegerParameterRange(
+                "General/batch_size",
+                min_value=8,
+                max_value=32,
+                step_size=8,
+            ),
+        ],
+        objective_metric_title="metrics",
+        objective_metric_series="accuracy",
+        objective_metric_sign="max",
+        execution_queue=EXECUTION_QUEUE,
+        max_number_of_concurrent_tasks=max_concurrent_tasks,
+        total_max_jobs=total_max_jobs,
+    )
+
+    print("\n===== HPO Started =====")
+    print(f"Optimizer Task ID: {optimizer_task.id}")
+    
+    optimizer.start()
+    optimizer.wait()
+
+    top_experiments = optimizer.get_top_experiments(top_k=3)
+    print("\n===== Top 3 Experiments =====")
+    for rank, exp in enumerate(top_experiments, start=1):
+        print(f"Top {rank}: task_id={exp.id}, name={exp.name}")
+
+    optimizer.stop()
+    optimizer_task.close()
+    
+    return top_experiments
+
+
 import argparse
 def get_args():
     parser = argparse.ArgumentParser(
-        description="Run GNN Hyperparameter Optimization (HPO) Pipeline - Version 2.2"
+        description="Run GNN Hyperparameter Optimization (HPO) with ClearML HyperParameterOptimizer - Optuna Backend"
     )
     parser.add_argument(
         "--run_mode",
         choices=["local", "remote"],
         default="local",
-        help="Run mode: local (in-process) or remote (enqueue to ClearML queue).",
+        help="Run mode: local or remote (ClearML queue).",
     )
     parser.add_argument(
         "--queue",
-        default="Yolov8_training_v0.1",
+        default=EXECUTION_QUEUE,
         help="ClearML queue name for remote execution."
     )
     parser.add_argument(
@@ -459,55 +496,95 @@ def get_args():
         help="ClearML model id for graph cache model."
     )
     parser.add_argument(
-        "--n_trials",
-        type=int,
-        default=10,
-        help="Number of HPO trials."
-    )
-    parser.add_argument(
         "--max_epochs_per_trial",
         type=int,
-        default=20,
-        help="Maximum epochs per trial (early stopping may stop sooner)."
+        default=100,
+        help="Maximum epochs per trial."
     )
     parser.add_argument(
         "--val_split",
         type=float,
         default=0.15,
-        help="Validation set fraction (0.15 = 15 percent)."
+        help="Validation set fraction."
     )
     parser.add_argument(
         "--test_split",
         type=float,
         default=0.15,
-        help="Test set fraction (0.15 = 15 percent)."
+        help="Test set fraction."
+    )
+    parser.add_argument(
+        "--max_concurrent_tasks",
+        type=int,
+        default=2,
+        help="Max concurrent HPO tasks."
+    )
+    parser.add_argument(
+        "--total_max_jobs",
+        type=int,
+        default=10,
+        help="Total max HPO jobs."
     )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
-    
     args = get_args()
-    Task.init(project_name="HPO_Pipeline", task_name="GNN_HPO")
     
-    if args.run_mode == "local":
-        PipelineDecorator.run_locally()
-    else:
-        PipelineDecorator.run_remotely(queue_name=args.queue)
+    # Entry task to coordinate HPO
+    entry_task = Task.init(
+        project_name=PROJECT_NAME,
+        task_name="GNN_HPO_Entry",
+        reuse_last_task_id=False,
+    )
     
-    result = hpo_step(
+    print("\n===== GNN Hyperparameter Optimization =====")
+    print(f"Run Mode: {args.run_mode}")
+    print(f"Queue: {args.queue}")
+    print(f"Max Concurrent Tasks: {args.max_concurrent_tasks}")
+    print(f"Total Max Jobs: {args.total_max_jobs}")
+    
+    # Step 1: Create base task
+    print("\n[1/2] Creating base task...")
+    base_task_id = Task.clone(
+        cloned_task=entry_task.id,
+        name="GNN_HPO_Base_Task",
+        project=PROJECT_NAME,
+    )
+    
+    # Execute base task to initialize it
+    base_task = Task.get_task(task_id=base_task_id)
+    base_task.connect(
+        {
+            "hidden_dim": 128,
+            "dropout": 0.3,
+            "lr": 5e-4,
+            "batch_size": 16,
+        },
+        name="General"
+    )
+    
+    # Step 2: Launch HPO
+    print("[2/2] Launching HyperParameterOptimizer...")
+    if args.run_mode == "remote":
+        print(f"Enqueueing to queue: {args.queue}")
+    
+    top_experiments = run_hpo_optimization(
+        base_task_id=base_task_id,
+        max_concurrent_tasks=args.max_concurrent_tasks,
+        total_max_jobs=args.total_max_jobs,
         graph_cache=args.graph_cache,
         graph_cache_model_id=args.graph_cache_model_id,
         graph_cache_task_id=args.graph_cache_task_id,
         graph_cache_artifact_name=args.graph_cache_artifact_name,
-        n_trials=args.n_trials,
         max_epochs_per_trial=args.max_epochs_per_trial,
         val_split=args.val_split,
         test_split=args.test_split,
     )
     
-    print(f"\n{'='*100}")
-    print("HPO RESULT:")
-    for key, value in result.items():
-        print(f"  {key}: {value}")
-    print(f"{'='*100}")
+    print("\n===== HPO Complete =====")
+    if top_experiments:
+        print(f"Best Task: {top_experiments[0].id}")
+        print(f"Best Task Name: {top_experiments[0].name}")
+    
+    entry_task.close()
