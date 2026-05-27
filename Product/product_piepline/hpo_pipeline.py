@@ -25,6 +25,12 @@ def get_args():
         help="ClearML queue name for remote execution."
     )
     parser.add_argument(
+        "--best_hpo_task_id",
+        type=str,
+        default=None,
+        help="Best HPO task ID to use for final model training."
+    )
+    parser.add_argument(
         "--max_epochs_per_trial",
         type=int,
         default=2,
@@ -64,16 +70,6 @@ def get_args():
 
 
 def run_hpo_pipeline(args):
-    """
-    Create and run a multi-stage ClearML pipeline for GNN Hyperparameter Optimization.
-    
-    Pipeline stages:
-    1. stage_prepare_graph: Load and prepare graph data
-    2. stage_base_training: Train base model with default parameters
-    3. stage_hpo: Run hyperparameter optimization
-    4. stage_final_model: Train final model with best hyperparameters
-    """
-    
     # Initialize the pipeline controller
     pipe = PipelineController(
         name="GNN_HPO_Multi_Stage_Pipeline", 
@@ -87,11 +83,10 @@ def run_hpo_pipeline(args):
     logger.info(f"Multi-Stage Pipeline initialized with queue: {args.queue}")
 
     # Stage 1: Prepare Graph Cache
-    # This stage loads the graph data and makes it available as artifact
     pipe.add_step(
         name="stage_prepare_graph",
         base_task_project=PROJECT_NAME,
-        base_task_name="GNN_HPO_Base_Task",
+        base_task_name="HPO: GNN Hyperparameter Optimization",
         execution_queue=args.queue,
         parameter_override={
             "General/graph_cache": DEFAULT_GRAPH_CACHE,
@@ -104,12 +99,11 @@ def run_hpo_pipeline(args):
     )
 
     # Stage 2: Base Training
-    # Train a single model with default parameters to initialize metrics
     pipe.add_step(
         name="stage_base_training",
         parents=["stage_prepare_graph"],
         base_task_project=PROJECT_NAME,
-        base_task_name="GNN_HPO_Base_Task",
+        base_task_name="HPO: GNN Hyperparameter Optimization",
         execution_queue=args.queue,
         parameter_override={
             "General/graph_cache": DEFAULT_GRAPH_CACHE,
@@ -126,7 +120,6 @@ def run_hpo_pipeline(args):
     )
 
     # Stage 3: Hyperparameter Optimization
-    # Run HPO to find optimal hyperparameters
     pipe.add_step(
         name="stage_hpo",
         parents=["stage_base_training"],
@@ -148,23 +141,20 @@ def run_hpo_pipeline(args):
         }
     )
 
-    # Stage 4: Final Model Training
-    pipe.add_step(
-        name="stage_final_model",
-        parents=["stage_hpo"],
-        base_task_project=PROJECT_NAME,
-        base_task_name="GNN_HPO_Base_Task",
-        execution_queue=args.queue,
-        parameter_override={
-            "General/graph_cache": DEFAULT_GRAPH_CACHE,
-            "General/graph_cache_task_id": "${stage_hpo.id}",
-            "General/graph_cache_artifact_name": DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
-            "General/max_epochs_per_trial": 20,
-            "General/val_split": args.val_split,
-            "General/test_split": args.test_split,
-            "General/hpo_task_id": "${stage_hpo.id}",
-        }
-    )
+    # Stage 4: Final Model Training (Optional)
+    if args.best_hpo_task_id:
+        logger.info(f"Using best HPO task {args.best_hpo_task_id} for final model training")
+        pipe.add_step(
+            name="stage_final_model",
+            parents=["stage_hpo"],
+            base_task_id=args.best_hpo_task_id,
+            execution_queue=args.queue,
+            parameter_override={
+                "General/max_epochs_per_trial": 10,
+            }
+        )
+    else:
+        logger.info("Skipping final model training (no best_hpo_task_id provided)")
 
     logger.info("\n===== Pipeline Configuration =====")
     logger.info(f"Stage 1: Prepare Graph Cache")
