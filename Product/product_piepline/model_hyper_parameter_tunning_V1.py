@@ -50,7 +50,6 @@ DEFAULT_GRAPH_CACHE_TASK_ID = "b6e2aee4168040729935da12e87d4b1f"
 DEFAULT_GRAPH_CACHE_ARTIFACT_NAME = "graph_cache"
 EXECUTION_QUEUE = "Yolov8_training_v0.1"
 
-# HPO Configuration
 RANDOM_SEED = 42
 EARLY_STOPPING_PATIENCE = 10
 EARLY_STOPPING_METRIC = "hybrid"
@@ -61,14 +60,14 @@ def train_evaluate_single_trial(
     graph_cache_model_id: str = None,
     graph_cache_task_id: str = "b6e2aee4168040729935da12e87d4b1f",
     graph_cache_artifact_name: str = "graph_cache",
-    max_epochs_per_trial: int = 100,
+    max_epochs_per_trial: int = 2,
     val_split: float = 0.15,
     test_split: float = 0.15,
 ) -> dict:
     """Base task for HyperParameterOptimizer - trains and evaluates a single model configuration."""
 
     RANDOM_SEED = 42
-    EARLY_STOPPING_PATIENCE = 50
+    EARLY_STOPPING_PATIENCE = 10
     EARLY_STOPPING_METRIC = "hybrid"
 
     # Set Random Seeds
@@ -392,7 +391,7 @@ def train_evaluate_single_trial(
 def run_hpo_optimization(
     base_task_id,
     max_concurrent_tasks=2,
-    total_max_jobs=10,
+    total_max_jobs=2,
     graph_cache="graph_cache.pt",
     graph_cache_model_id=None,
     graph_cache_task_id="b6e2aee4168040729935da12e87d4b1f",
@@ -504,7 +503,7 @@ def get_args():
     parser.add_argument(
         "--max_epochs_per_trial",
         type=int,
-        default=100,
+        default=2,
         help="Maximum epochs per trial."
     )
     parser.add_argument(
@@ -528,7 +527,7 @@ def get_args():
     parser.add_argument(
         "--total_max_jobs",
         type=int,
-        default=10,
+        default=2,
         help="Total max HPO jobs."
     )
     return parser.parse_args()
@@ -536,8 +535,6 @@ def get_args():
 
 if __name__ == "__main__":
     args = get_args()
-    
-    # Entry task to coordinate HPO
     entry_task = Task.init(
         project_name=PROJECT_NAME,
         task_name="GNN_HPO_Entry",
