@@ -21,8 +21,13 @@ Run locally:
 
 
 import os
+import logging
 from datetime import datetime
-from clearml import PipelineDecorator
+from clearml import Task
+from clearml.automation import PipelineController
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Global timestamp for this run — all model outputs go under models/e2e/<RUN_TAG>/
 RUN_TAG = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -47,7 +52,6 @@ else:
 # ═══════════════════════════════════════════════════════════════════════════
 # STEP 1 — Data Processing
 # ═══════════════════════════════════════════════════════════════════════════
-@PipelineDecorator.component(cache=True, execution_queue="data_engineer")
 def data_preprocessing_step(dataset_path: str, subset_percentage=None) -> str:
     """Extract BDD100K subset, convert JSON→YOLO, create dataset.yaml."""
     import os, shutil, json, random
@@ -153,7 +157,6 @@ def data_preprocessing_step(dataset_path: str, subset_percentage=None) -> str:
 # ═══════════════════════════════════════════════════════════════════════════
 # STEP 2 — YOLO Training & Evaluation
 # ═══════════════════════════════════════════════════════════════════════════
-@PipelineDecorator.component(cache=False, execution_queue="data_engineer")
 def yolo_train_step(yaml_path: str, init_weight: str, epochs: int,
                     imgsz: int, batch: int) -> str:
     """Train YOLOv8 with CBAM+SE, return path to best.pt."""
@@ -215,7 +218,6 @@ def yolo_train_step(yaml_path: str, init_weight: str, epochs: int,
     return best_path
 
 
-@PipelineDecorator.component(cache=False, execution_queue="data_engineer")
 def yolo_eval_step(yaml_path: str, model_path: str, imgsz: int, batch: int) -> dict:
     """Evaluate trained YOLO model, return metrics dict."""
     import os, torch
@@ -270,7 +272,6 @@ def yolo_eval_step(yaml_path: str, model_path: str, imgsz: int, batch: int) -> d
 # ═══════════════════════════════════════════════════════════════════════════
 # STEP 3 — Feature Engineering (Graph Cache)
 # ═══════════════════════════════════════════════════════════════════════════
-@PipelineDecorator.component(cache=True, execution_queue="data_engineer")
 def graph_build_step(yolo_weight_path: str, yolo_cache_path: str, data_dir: str) -> str:
     """Build spatial graph dataset from YOLO detections → graph_cache.pt."""
     import os, shutil
@@ -375,7 +376,6 @@ def graph_build_step(yolo_weight_path: str, yolo_cache_path: str, data_dir: str)
     return cache_path
 
 
-@PipelineDecorator.component(cache=False, execution_queue="data_engineer")
 def upload_graph_cache_step(graph_cache_path: str) -> str:
     """Upload graph_cache.pt as ClearML artifact."""
     from clearml import Task
@@ -391,7 +391,6 @@ def upload_graph_cache_step(graph_cache_path: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════
 # STEP 4 — GNN Training & Evaluation
 # ═══════════════════════════════════════════════════════════════════════════
-@PipelineDecorator.component(cache=False, execution_queue="data_engineer")
 def gnn_train_step(graph_cache_path: str, hidden_dim: int, dropout: float,
                    lr: float, epochs: int, batch_size: int) -> str:
     """Train SpatioTemporalModel, return model checkpoint path."""
@@ -454,7 +453,6 @@ def gnn_train_step(graph_cache_path: str, hidden_dim: int, dropout: float,
     return model_path
 
 
-@PipelineDecorator.component(cache=False, execution_queue="data_engineer")
 def gnn_eval_step(graph_cache_path: str, model_path: str) -> dict:
     """Evaluate GNN risk classification, return metrics."""
     import os, torch, numpy as np
@@ -517,83 +515,163 @@ def gnn_eval_step(graph_cache_path: str, model_path: str) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# STEP 5 — Hyperparameter Tuning (simplified grid search)
+# STEP 5 — Hyperparameter Tuning (V1: GNNClassifier + CrossEntropyLoss)
 # ═══════════════════════════════════════════════════════════════════════════
-@PipelineDecorator.component(cache=False, execution_queue="data_engineer")
-def hpo_step(graph_cache_path: str, n_trials: int = 2, epochs_per_trial: int = 2) -> dict:
-    """Simplified HPO: train a few GNN configs, return best hyperparameters."""
+def hpo_step(graph_cache_path: str, n_trials: int = 2, max_epochs_per_trial: int = 2) -> dict:
+    """HPO using GNNClassifier (3-class) with CrossEntropyLoss and early stopping.
+    Based on model_hyper_parameter_tunning_V1.py approach."""
     import torch, numpy as np
     import torch.nn as nn, torch.nn.functional as F
     from clearml import Task
-    from torch.utils.data import Subset
+    from torch.utils.data import Dataset
     from torch_geometric.loader import DataLoader
     from torch_geometric.nn import GCNConv, global_mean_pool
     from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
     Task.init(project_name="MLOps_Product_Assisted_Driving", task_name="GNN_HPO")
 
-    class RawDS(torch.utils.data.Dataset):
-        def __init__(self, d): self.d = d
-        def __len__(self): return len(self.d)
-        def __getitem__(self, i): return self.d[i]
+    EARLY_STOPPING_PATIENCE = 5
+    RANDOM_SEED = 42
+    torch.manual_seed(RANDOM_SEED)
+    np.random.seed(RANDOM_SEED)
 
-    class STM(nn.Module):
-        def __init__(self, hd=128, dp=0.3):
+    class RawGraphDataset(Dataset):
+        def __init__(self, data): self.data = data
+        def __len__(self): return len(self.data)
+        def __getitem__(self, idx): return self.data[idx]
+
+    class GNNClassifier(nn.Module):
+        """3-class GNN classifier (Low/Medium/High risk)."""
+        def __init__(self, hidden_dim=128, dropout=0.3):
             super().__init__()
-            self.g1 = GCNConv(5, hd); self.g2 = GCNConv(hd, hd); self.dp = nn.Dropout(dp)
-            self.head = nn.Sequential(nn.Linear(hd, 64), nn.ReLU(), nn.Dropout(dp), nn.Linear(64, 1))
-        def forward(self, g):
-            x = F.relu(self.g1(g.x, g.edge_index)); x = self.dp(x)
-            x = F.relu(self.g2(x, g.edge_index));   x = self.dp(x)
-            return self.head(global_mean_pool(x, g.batch))
+            self.gcn1 = GCNConv(5, hidden_dim)
+            self.gcn2 = GCNConv(hidden_dim, hidden_dim)
+            self.dropout = nn.Dropout(dropout)
+            self.classifier = nn.Sequential(
+                nn.Linear(hidden_dim, 64), nn.ReLU(),
+                nn.Dropout(dropout), nn.Linear(64, 3),
+            )
+        def forward(self, graph):
+            x = F.relu(self.gcn1(graph.x, graph.edge_index))
+            x = self.dropout(x)
+            x = F.relu(self.gcn2(x, graph.edge_index))
+            x = self.dropout(x)
+            return self.classifier(global_mean_pool(x, graph.batch))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    raw = torch.load(graph_cache_path, weights_only=False)
-    ds = RawDS(raw)
-    train_size = int(0.8 * len(ds))
-    test_indices = list(range(train_size, len(ds)))
-    train_scores = [ds[i][1].item() for i in range(train_size)]
-    low_t, high_t = np.percentile(train_scores, [33, 66])
+    raw_data = torch.load(graph_cache_path, weights_only=False)
+    dataset = RawGraphDataset(raw_data)
+    total_size = len(dataset)
 
+    # Train/val/test split (70/15/15)
+    train_size = int(0.7 * total_size)
+    val_size = int(0.15 * total_size)
+    train_indices = list(range(train_size))
+    val_indices = list(range(train_size, train_size + val_size))
+    test_indices = list(range(train_size + val_size, total_size))
+
+    # Compute class thresholds from training data
+    train_labels_raw = np.array([dataset[i][1].item() for i in train_indices])
+    low_t = np.percentile(train_labels_raw, 33)
+    high_t = np.percentile(train_labels_raw, 66)
+
+    def score_to_class(score):
+        if score < low_t: return 0
+        elif score < high_t: return 1
+        else: return 2
+
+    def create_labeled_data(indices):
+        return [(dataset[i][0], score_to_class(dataset[i][1].item())) for i in indices]
+
+    train_data = create_labeled_data(train_indices)
+    val_data = create_labeled_data(val_indices)
+    test_data = create_labeled_data(test_indices)
+
+    # Search space
     search_space = [
-        {"hidden_dim": 64,  "dropout": 0.2, "lr": 1e-3},
-        {"hidden_dim": 128, "dropout": 0.3, "lr": 5e-4},
-        {"hidden_dim": 128, "dropout": 0.4, "lr": 1e-3},
+        {"hidden_dim": 64,  "dropout": 0.2, "lr": 1e-3, "batch_size": 16},
+        {"hidden_dim": 128, "dropout": 0.3, "lr": 5e-4, "batch_size": 8},
+        {"hidden_dim": 256, "dropout": 0.4, "lr": 1e-3, "batch_size": 16},
     ][:n_trials]
 
-    best_cfg, best_f1 = None, 0
-    for idx, cfg in enumerate(search_space):
-        loader = DataLoader(Subset(ds, range(train_size)), batch_size=8, shuffle=True)
-        model = STM(hd=cfg["hidden_dim"], dp=cfg["dropout"]).to(device)
-        opt = torch.optim.Adam(model.parameters(), lr=cfg["lr"])
-        for ep in range(epochs_per_trial):
-            model.train(); total = 0
-            for batch, labels in loader:
-                batch, labels = batch.to(device), labels.to(device).float().view(-1)
-                loss = nn.MSELoss()(model(batch).view(-1), labels)
-                opt.zero_grad(); loss.backward(); opt.step(); total += loss.item()
-            print(f"[HPO trial {idx+1}] epoch {ep+1} loss={total/len(loader):.6f}")
+    best_cfg, best_test_f1 = None, -1
 
-        # Quick eval
-        model.eval(); y_true, y_pred = [], []
-        for i in test_indices:
-            g, label = ds[i]; g = g.to(device)
-            with torch.no_grad(): pred = model(g).item()
-            y_true.append(0 if label.item() < low_t else (1 if label.item() < high_t else 2))
-            y_pred.append(0 if pred < low_t else (1 if pred < high_t else 2))
-        _, _, f1, _ = precision_recall_fscore_support(y_true, y_pred, average="macro", zero_division=0)
-        print(f"[HPO trial {idx+1}] config={cfg} f1={f1:.3f}")
-        if f1 > best_f1:
-            best_f1 = f1; best_cfg = cfg
+    for trial_idx, cfg in enumerate(search_space):
+        print(f"\n[HPO Trial {trial_idx+1}/{len(search_space)}] {cfg}")
 
-    print(f"[HPO] Best config: {best_cfg} f1={best_f1:.3f}")
-    return {"best_config": best_cfg, "best_f1": float(best_f1)}
+        train_loader = DataLoader(train_data, batch_size=cfg["batch_size"], shuffle=True)
+        val_loader = DataLoader(val_data, batch_size=cfg["batch_size"], shuffle=False)
+        test_loader = DataLoader(test_data, batch_size=cfg["batch_size"], shuffle=False)
+
+        model = GNNClassifier(hidden_dim=cfg["hidden_dim"], dropout=cfg["dropout"]).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=cfg["lr"])
+        loss_fn = nn.CrossEntropyLoss()
+
+        best_val_f1, patience_counter = -1, 0
+        best_model_state = None
+
+        for epoch in range(max_epochs_per_trial):
+            model.train()
+            train_loss = 0.0
+            for graph, label in train_loader:
+                graph, label = graph.to(device), label.to(device)
+                logits = model(graph)
+                loss = loss_fn(logits, label)
+                optimizer.zero_grad(); loss.backward(); optimizer.step()
+                train_loss += loss.item()
+            train_loss /= max(len(train_loader), 1)
+
+            # Validation
+            model.eval()
+            val_preds, val_true = [], []
+            with torch.no_grad():
+                for graph, label in val_loader:
+                    graph = graph.to(device)
+                    preds = model(graph).argmax(dim=1).cpu().numpy()
+                    val_preds.extend(preds)
+                    val_true.extend(label.numpy() if hasattr(label, 'numpy') else [label])
+            _, _, val_f1, _ = precision_recall_fscore_support(
+                val_true, val_preds, average="macro", zero_division=0)
+            print(f"  [E{epoch+1}] loss={train_loss:.4f} val_f1={val_f1:.4f}")
+
+            if val_f1 > best_val_f1:
+                best_val_f1 = val_f1
+                best_model_state = {k: v.cpu() for k, v in model.state_dict().items()}
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                if patience_counter >= EARLY_STOPPING_PATIENCE:
+                    print(f"  Early stopping at epoch {epoch+1}")
+                    break
+
+        # Test evaluation with best model
+        if best_model_state:
+            final_model = GNNClassifier(hidden_dim=cfg["hidden_dim"], dropout=cfg["dropout"]).to(device)
+            final_model.load_state_dict(best_model_state)
+            final_model.eval()
+            test_preds, test_true = [], []
+            with torch.no_grad():
+                for graph, label in test_loader:
+                    graph = graph.to(device)
+                    preds = final_model(graph).argmax(dim=1).cpu().numpy()
+                    test_preds.extend(preds)
+                    test_true.extend(label.numpy() if hasattr(label, 'numpy') else [label])
+            test_acc = accuracy_score(test_true, test_preds)
+            _, _, test_f1, _ = precision_recall_fscore_support(
+                test_true, test_preds, average="macro", zero_division=0)
+            print(f"  Test: acc={test_acc:.3f} f1={test_f1:.3f}")
+
+            if test_f1 > best_test_f1:
+                best_test_f1 = test_f1
+                best_cfg = cfg
+
+    print(f"\n[HPO] Best config: {best_cfg} test_f1={best_test_f1:.3f}")
+    return {"best_config": best_cfg, "best_f1": float(best_test_f1)}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # STEP 6 — Multi-Model Training & Selection
 # ═══════════════════════════════════════════════════════════════════════════
-@PipelineDecorator.component(cache=False, execution_queue="data_engineer")
 def multi_model_step(graph_cache_path: str, epochs: int = 2) -> dict:
     """Train GCN + GraphSAGE, select best architecture."""
     import torch, numpy as np
@@ -673,138 +751,171 @@ def multi_model_step(graph_cache_path: str, epochs: int = 2) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# PIPELINE STITCHING
+# PIPELINE ORCHESTRATION (PipelineController format — ref: pipeline_hpo.py)
 # ═══════════════════════════════════════════════════════════════════════════
-@PipelineDecorator.pipeline(
-    name="End_To_End_Assisted_Driving_Pipeline",
-    project="MLOps_Product_Assisted_Driving",
-    version="1.0",
-    default_queue="data_engineer",
-)
-def end_to_end_pipeline(
+PROJECT_NAME = "MLOps_Product_Assisted_Driving"
+EXECUTION_QUEUE = "data_engineer"
+
+
+def run_pipeline(
     dataset_path: str,
+    yolo_init_weight: str,
     subset_percentage: float = 0.1,
-    yolo_init_weight: str  = "models/yolo/Yolov8_best.pt",
-    yolo_epochs: int       = 1,
-    yolo_imgsz: int        = 640,
-    yolo_batch: int        = 4,
-    fe_data_dir: str       = "",
-    gnn_hidden_dim: int    = 128,
-    gnn_dropout: float     = 0.3,
-    gnn_lr: float          = 5e-4,
-    gnn_epochs: int        = 1,
-    gnn_batch_size: int    = 8,
-    hpo_trials: int        = 2,
-    hpo_epochs: int        = 1,
-    multi_epochs: int      = 1,
-    skip_upload: bool      = True,
+    yolo_epochs: int = 1,
+    gnn_epochs: int = 1,
+    hpo_trials: int = 2,
+    hpo_epochs: int = 1,
+    multi_epochs: int = 1,
 ):
-    """
-    End-to-End Assisted Driving Pipeline
-    ─────────────────────────────────────
-    Step 1  data_preprocessing_step   → BDD100K subset in YOLO format + dataset.yaml
-    Step 2a yolo_train_step           → Trained YOLOv8-CBAM-SE best.pt
-    Step 2b yolo_eval_step            → mAP / precision / recall metrics
-    Step 3a graph_build_step          → graph_cache.pt (spatial graph dataset)
-    Step 3b upload_graph_cache_step   → Upload to ClearML (skippable)
-    Step 4a gnn_train_step            → Trained SpatioTemporalModel
-    Step 4b gnn_eval_step             → Risk classification metrics
-    Step 5  hpo_step                  → Best GNN hyperparameters
-    Step 6  multi_model_step          → Best architecture (GCN vs GraphSAGE)
+    """Orchestrate the end-to-end pipeline using PipelineController."""
 
-    All trained models are saved under models/e2e/ to avoid overwriting
-    existing production models in models/yolo/ and models/gnn/.
-    """
-    # Step 1: Data Processing
-    yaml_path = data_preprocessing_step(
-        dataset_path=dataset_path,
-        subset_percentage=subset_percentage,
+    pipe = PipelineController(
+        name="End_To_End_Assisted_Driving_Pipeline",
+        project=PROJECT_NAME,
+        version="2.0",
+        add_pipeline_tags=False,
+    )
+    pipe.set_default_execution_queue(EXECUTION_QUEUE)
+    logger.info(f"Pipeline execution queue: {EXECUTION_QUEUE}")
+
+    # ── Stage 1: Data Processing ──
+    pipe.add_function_step(
+        name="stage_data",
+        function=data_preprocessing_step,
+        function_kwargs={
+            "dataset_path": dataset_path,
+            "subset_percentage": subset_percentage,
+        },
+        function_return=["yaml_path"],
+        execution_queue=EXECUTION_QUEUE,
     )
 
-    # Step 2: YOLO Training & Evaluation
-    yolo_model = yolo_train_step(
-        yaml_path=yaml_path,
-        init_weight=yolo_init_weight,
-        epochs=yolo_epochs,
-        imgsz=yolo_imgsz,
-        batch=yolo_batch,
-    )
-    yolo_metrics = yolo_eval_step(
-        yaml_path=yaml_path,
-        model_path=yolo_model,
-        imgsz=yolo_imgsz,
-        batch=yolo_batch,
+    # ── Stage 2a: YOLO Training ──
+    pipe.add_function_step(
+        name="stage_yolo_train",
+        parents=["stage_data"],
+        function=yolo_train_step,
+        function_kwargs={
+            "yaml_path": "${stage_data.yaml_path}",
+            "init_weight": yolo_init_weight,
+            "epochs": yolo_epochs,
+            "imgsz": 640,
+            "batch": 4,
+        },
+        function_return=["best_path"],
+        execution_queue=EXECUTION_QUEUE,
     )
 
-    # Step 3: Feature Engineering
+    # ── Stage 2b: YOLO Evaluation ──
+    pipe.add_function_step(
+        name="stage_yolo_eval",
+        parents=["stage_yolo_train", "stage_data"],
+        function=yolo_eval_step,
+        function_kwargs={
+            "yaml_path": "${stage_data.yaml_path}",
+            "model_path": "${stage_yolo_train.best_path}",
+            "imgsz": 640,
+            "batch": 4,
+        },
+        function_return=["yolo_metrics"],
+        execution_queue=EXECUTION_QUEUE,
+    )
+
+    # ── Stage 3: Feature Engineering (Graph Build) ──
+    fe_data_dir = os.path.join(
+        os.path.dirname(dataset_path), "bdd100k_subset_yolo", "images", "train"
+    )
     yolo_cache = os.path.join(os.path.dirname(yolo_init_weight), "yolo_cache_train.pt")
-    if not fe_data_dir:
-        fe_data_dir = os.path.join(os.path.dirname(dataset_path),
-                                   "bdd100k_subset_yolo", "images", "train")
-    graph_cache = graph_build_step(
-        yolo_weight_path=yolo_model,
-        yolo_cache_path=yolo_cache,
-        data_dir=fe_data_dir,
+    pipe.add_function_step(
+        name="stage_graph_build",
+        parents=["stage_yolo_train"],
+        function=graph_build_step,
+        function_kwargs={
+            "yolo_weight_path": "${stage_yolo_train.best_path}",
+            "yolo_cache_path": yolo_cache,
+            "data_dir": fe_data_dir,
+        },
+        function_return=["graph_cache_path"],
+        execution_queue=EXECUTION_QUEUE,
     )
 
-    # Upload to ClearML (skip by default — slow and not needed for validation)
-    if not skip_upload:
-        upload_graph_cache_step(graph_cache_path=graph_cache)
-
-    # Step 4: GNN Training & Evaluation
-    gnn_model = gnn_train_step(
-        graph_cache_path=graph_cache,
-        hidden_dim=gnn_hidden_dim,
-        dropout=gnn_dropout,
-        lr=gnn_lr,
-        epochs=gnn_epochs,
-        batch_size=gnn_batch_size,
-    )
-    gnn_metrics = gnn_eval_step(
-        graph_cache_path=graph_cache,
-        model_path=gnn_model,
-    )
-
-    # Step 5: Hyperparameter Tuning
-    hpo_result = hpo_step(
-        graph_cache_path=graph_cache,
-        n_trials=hpo_trials,
-        epochs_per_trial=hpo_epochs,
+    # ── Stage 4a: GNN Training ──
+    pipe.add_function_step(
+        name="stage_gnn_train",
+        parents=["stage_graph_build"],
+        function=gnn_train_step,
+        function_kwargs={
+            "graph_cache_path": "${stage_graph_build.graph_cache_path}",
+            "hidden_dim": 128,
+            "dropout": 0.3,
+            "lr": 5e-4,
+            "epochs": gnn_epochs,
+            "batch_size": 8,
+        },
+        function_return=["gnn_model_path"],
+        execution_queue=EXECUTION_QUEUE,
     )
 
-    # Step 6: Multi-Model Selection
-    multi_result = multi_model_step(
-        graph_cache_path=graph_cache,
-        epochs=multi_epochs,
+    # ── Stage 4b: GNN Evaluation ──
+    pipe.add_function_step(
+        name="stage_gnn_eval",
+        parents=["stage_gnn_train", "stage_graph_build"],
+        function=gnn_eval_step,
+        function_kwargs={
+            "graph_cache_path": "${stage_graph_build.graph_cache_path}",
+            "model_path": "${stage_gnn_train.gnn_model_path}",
+        },
+        function_return=["gnn_metrics"],
+        execution_queue=EXECUTION_QUEUE,
     )
 
-    return {
-        "yolo_metrics": yolo_metrics,
-        "gnn_metrics":  gnn_metrics,
-        "hpo_result":   hpo_result,
-        "multi_result": multi_result,
-    }
+    # ── Stage 5: Hyperparameter Tuning (V1: GNNClassifier) ──
+    pipe.add_function_step(
+        name="stage_hpo",
+        parents=["stage_graph_build"],
+        function=hpo_step,
+        function_kwargs={
+            "graph_cache_path": "${stage_graph_build.graph_cache_path}",
+            "n_trials": hpo_trials,
+            "max_epochs_per_trial": hpo_epochs,
+        },
+        function_return=["hpo_result"],
+        execution_queue=EXECUTION_QUEUE,
+    )
+
+    # ── Stage 6: Multi-Model Selection ──
+    pipe.add_function_step(
+        name="stage_multi_model",
+        parents=["stage_graph_build"],
+        function=multi_model_step,
+        function_kwargs={
+            "graph_cache_path": "${stage_graph_build.graph_cache_path}",
+            "epochs": multi_epochs,
+        },
+        function_return=["multi_result"],
+        execution_queue=EXECUTION_QUEUE,
+    )
+
+    # Start the pipeline locally (tasks run on this machine)
+    logger.info("Starting pipeline locally with tasks on queue: %s", EXECUTION_QUEUE)
+    pipe.start_locally()
+    logger.info("Pipeline completed successfully")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # EXECUTION ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
-    from clearml import Task as _Task
 
     clearml_task_id = os.environ.get('CLEARML_TASK_ID')
 
     # ── Known workspace roots ─────────────────────────────────────────────
-    # The ClearML agent clones the repo to a cache dir (C: drive) which lacks
-    # the dataset and model weights (gitignored). We search multiple locations
-    # to find the actual files on the machine.
     KNOWN_WORKSPACES = [
-        os.environ.get("INFINIFYX_PROJECT_ROOT", ""),             # explicit env override (highest priority)
-        os.path.abspath(os.path.join(current_dir, "..", "..")),   # relative to script file
-        os.getcwd(),                                              # agent clone dir
-        # Known dev workspace paths:
-        r"D:\UTS\2026Autumn\42174 Artificial Intelligence Studio\Infinity\InfinifyX",  # Windows
-        "/home/sagemaker-user/InfinifyX",                          # AWS SageMaker
+        os.environ.get("INFINIFYX_PROJECT_ROOT", ""),
+        os.path.abspath(os.path.join(current_dir, "..", "..")),
+        os.getcwd(),
+        r"D:\UTS\2026Autumn\42174 Artificial Intelligence Studio\Infinity\InfinifyX",
+        "/home/sagemaker-user/InfinifyX",
     ]
 
     def _find_path(rel_path: str) -> str:
@@ -816,42 +927,36 @@ if __name__ == "__main__":
             if os.path.exists(candidate):
                 print(f"  [resolve] {rel_path} → {candidate}")
                 return candidate
-        # Fallback: return relative to cwd
         fallback = os.path.join(os.getcwd(), rel_path)
-        print(f"  [resolve] {rel_path} → {fallback}  (⚠ NOT FOUND in any workspace)")
+        print(f"  [resolve] {rel_path} → {fallback}  (⚠ NOT FOUND)")
         return fallback
 
     if clearml_task_id:
-        # ── Agent / CI mode ──────────────────────────────────────────────
+        # ── Agent / CI mode ──
         print(f"[*] Agent mode. Task ID: {clearml_task_id}")
-        task = _Task.init(continue_last_task=clearml_task_id)
+        task = Task.init(continue_last_task=clearml_task_id)
         params = task.get_parameters().get("General", {})
 
-        project_root = os.getcwd()
-
-        # Dataset: search known workspaces for the actual data
         dataset_rel = params.get("dataset_path", "data_preprocessing/datasets/bdd100k")
         if os.path.isabs(dataset_rel) and os.path.exists(dataset_rel):
             dataset_path = dataset_rel
         else:
             dataset_path = _find_path(dataset_rel)
 
-        # YOLO weight: search known workspaces
-        yolo_weight = _find_path(os.path.join("models", "yolo", "Yolov8_best.pt"))
-
-        subset_pct    = float(params.get("subset_percentage", 0.1))
-        yolo_ep       = int(params.get("yolo_epochs", 1))
-        gnn_ep        = int(params.get("gnn_epochs", 1))
-        hpo_tr        = int(params.get("hpo_trials", 2))
-        multi_ep      = int(params.get("multi_epochs", 1))
+        yolo_weight  = _find_path(os.path.join("models", "yolo", "Yolov8_best.pt"))
+        subset_pct   = float(params.get("subset_percentage", 0.1))
+        yolo_ep      = int(params.get("yolo_epochs", 1))
+        gnn_ep       = int(params.get("gnn_epochs", 1))
+        hpo_tr       = int(params.get("hpo_trials", 2))
+        hpo_ep       = int(params.get("hpo_epochs", 1))
+        multi_ep     = int(params.get("multi_epochs", 1))
     else:
-        # ── Local debug mode ─────────────────────────────────────────────
+        # ── Local debug mode ──
         project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
         dataset_path = os.path.join(project_root, "data_preprocessing", "datasets", "bdd100k")
         yolo_weight  = os.path.join(project_root, "models", "yolo", "Yolov8_best.pt")
-        subset_pct, yolo_ep, gnn_ep, hpo_tr, multi_ep = 0.1, 1, 1, 2, 1
+        subset_pct, yolo_ep, gnn_ep, hpo_tr, hpo_ep, multi_ep = 0.1, 1, 1, 2, 1, 1
 
-    print(f"[*] Project root  : {project_root}")
     print(f"[*] Dataset path  : {dataset_path}")
     print(f"[*] YOLO weight   : {yolo_weight}")
 
@@ -860,27 +965,14 @@ if __name__ == "__main__":
     print(f"[*] Run tag       : {RUN_TAG}")
     print(f"[*] Models output : models/e2e/{RUN_TAG}/")
 
-    # PipelineDecorator.run_locally() runs the controller + all steps
-    # in the local process (subprocess per step). No agent queue needed.
-    PipelineDecorator.run_locally()
-
-    result = end_to_end_pipeline(
+    run_pipeline(
         dataset_path=dataset_path,
-        subset_percentage=subset_pct,
         yolo_init_weight=yolo_weight,
+        subset_percentage=subset_pct,
         yolo_epochs=yolo_ep,
-        yolo_imgsz=640,
-        yolo_batch=4,
-        gnn_hidden_dim=128,
-        gnn_dropout=0.3,
-        gnn_lr=5e-4,
         gnn_epochs=gnn_ep,
-        gnn_batch_size=8,
         hpo_trials=hpo_tr,
-        hpo_epochs=1,
+        hpo_epochs=hpo_ep,
         multi_epochs=multi_ep,
-        skip_upload=True,
     )
     print("\n===== End-to-End Pipeline Complete =====")
-    print(result)
-    #test1

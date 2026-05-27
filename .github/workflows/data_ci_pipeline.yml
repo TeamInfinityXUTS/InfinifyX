@@ -60,6 +60,7 @@ jobs:
         task.set_parameter("General/yolo_epochs", 1)
         task.set_parameter("General/gnn_epochs", 1)
         task.set_parameter("General/hpo_trials", 2)
+        task.set_parameter("General/hpo_epochs", 1)
         task.set_parameter("General/multi_epochs", 1)
 
         # Enqueue to the data_engineer queue — agent will pick it up
