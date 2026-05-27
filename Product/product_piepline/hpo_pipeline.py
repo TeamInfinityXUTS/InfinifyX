@@ -7,8 +7,10 @@ import argparse
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration from model_hyper_parameter_tunning_V1.py
-PROJECT_NAME = "HPO_Pipeline——GNN_Hyper_Parameter_Tunning"
+# Configuration
+# Project and queue for ClearML
+HPO_PROJECT_NAME = "HPO_Pipeline——GNN_Hyper_Parameter_Tunning"  # HPO orchestration project
+BASE_TASK_ID = "74b4a2b8962c43c98f20cac192c1e770"  # Base training task template ID
 DEFAULT_GRAPH_CACHE = "graph_cache.pt"
 DEFAULT_GRAPH_CACHE_TASK_ID = "b6e2aee4168040729935da12e87d4b1f"
 DEFAULT_GRAPH_CACHE_ARTIFACT_NAME = "graph_cache"
@@ -70,44 +72,47 @@ def get_args():
 
 
 def run_hpo_pipeline(args):
-    # Initialize the pipeline controller
     pipe = PipelineController(
         name="GNN_HPO_Multi_Stage_Pipeline", 
-        project=PROJECT_NAME, 
+        project=HPO_PROJECT_NAME,  # HPO orchestration project
         version="2.0.0", 
         add_pipeline_tags=False
     )
 
-    # Set default execution queue
     pipe.set_default_execution_queue(args.queue)
-    logger.info(f"Multi-Stage Pipeline initialized with queue: {args.queue}")
+    logger.info(f"Multi-Stage Pipeline initialized")
+    logger.info(f"HPO Project: {HPO_PROJECT_NAME}")
+    logger.info(f"Base task template ID: {BASE_TASK_ID}")
+    logger.info(f"Execution Queue: {args.queue}")
 
-    # Stage 1: Prepare Graph Cache
+    # Stage 1: Quick Baseline Verification
     pipe.add_step(
-        name="stage_prepare_graph",
-        base_task_project=PROJECT_NAME,
-        base_task_name="HPO: GNN Hyperparameter Optimization",
+        name="stage_quick_baseline",
+        base_task_id=BASE_TASK_ID,
         execution_queue=args.queue,
         parameter_override={
             "General/graph_cache": DEFAULT_GRAPH_CACHE,
             "General/graph_cache_task_id": DEFAULT_GRAPH_CACHE_TASK_ID,
             "General/graph_cache_artifact_name": DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
+            "General/hidden_dim": 128,
+            "General/dropout": 0.3,
+            "General/lr": 5e-4,
+            "General/batch_size": 16,
             "General/val_split": args.val_split,
             "General/test_split": args.test_split,
             "General/max_epochs_per_trial": 1,
         }
     )
 
-    # Stage 2: Base Training
+    # Stage 2: Baseline Training
     pipe.add_step(
-        name="stage_base_training",
-        parents=["stage_prepare_graph"],
-        base_task_project=PROJECT_NAME,
-        base_task_name="HPO: GNN Hyperparameter Optimization",
+        name="stage_baseline_training",
+        parents=["stage_quick_baseline"],
+        base_task_id=BASE_TASK_ID,
         execution_queue=args.queue,
         parameter_override={
             "General/graph_cache": DEFAULT_GRAPH_CACHE,
-            "General/graph_cache_task_id": "${stage_prepare_graph.id}",
+            "General/graph_cache_task_id": DEFAULT_GRAPH_CACHE_TASK_ID,
             "General/graph_cache_artifact_name": DEFAULT_GRAPH_CACHE_ARTIFACT_NAME,
             "General/hidden_dim": 128,
             "General/dropout": 0.3,
@@ -119,12 +124,11 @@ def run_hpo_pipeline(args):
         }
     )
 
-    # Stage 3: Hyperparameter Optimization
+    # Stage 3: Hyperparameter Optimization (True HPO Search)
     pipe.add_step(
-        name="stage_hpo",
-        parents=["stage_base_training"],
-        base_task_project=PROJECT_NAME,
-        base_task_name="HPO: GNN Hyperparameter Optimization",
+        name="stage_hpo_search",
+        parents=["stage_baseline_training"],
+        base_task_id=BASE_TASK_ID,
         execution_queue=args.queue,
         parameter_override={
             "General/graph_cache": DEFAULT_GRAPH_CACHE,
@@ -145,30 +149,36 @@ def run_hpo_pipeline(args):
     if args.best_hpo_task_id:
         logger.info(f"Using best HPO task {args.best_hpo_task_id} for final model training")
         pipe.add_step(
-            name="stage_final_model",
-            parents=["stage_hpo"],
+            name="stage_final_training",
+            parents=["stage_hpo_search"],
             base_task_id=args.best_hpo_task_id,
             execution_queue=args.queue,
             parameter_override={
-                "General/max_epochs_per_trial": 10,
+                "General/max_epochs_per_trial": 20,
             }
         )
     else:
-        logger.info("Skipping final model training (no best_hpo_task_id provided)")
+        logger.warning("No best_hpo_task_id provided - skipping final model training")
+        logger.warning("To enable Stage 4, run after HPO completes with: --best_hpo_task_id <task_id>")
 
-    logger.info("\n===== Pipeline Configuration =====")
-    logger.info(f"Stage 1: Prepare Graph Cache")
-    logger.info(f"Stage 2: Base Training (Epochs: {args.max_epochs_per_trial})")
-    logger.info(f"Stage 3: HPO Optimization (Jobs: {args.total_max_jobs}, Concurrent: {args.max_concurrent_tasks})")
-    logger.info(f"Stage 4: Final Model Training (Epochs: 100)")
-    logger.info(f"Execution Queue: {args.queue}")
+    logger.info("\n" + "="*50)
+    logger.info("Pipeline Configuration Summary")
+    logger.info("="*50)
+    logger.info(f"Stage 1: Quick Baseline Verification (1 epoch)")
+    logger.info(f"Stage 2: Baseline Training ({args.max_epochs_per_trial} epochs)")
+    logger.info(f"Stage 3: HPO Search (Jobs: {args.total_max_jobs}, Concurrent: {args.max_concurrent_tasks})")
+    if args.best_hpo_task_id:
+        logger.info(f"Stage 4: Final Training (20 epochs) - Best Task: {args.best_hpo_task_id}")
+    logger.info(f"Queue: {args.queue}")
     logger.info(f"Time Limit: {args.time_limit_minutes} minutes")
-    logger.info("===================================\n")
+    logger.info("="*50 + "\n")
     
     logger.info(f"Starting multi-stage pipeline...")
     pipe.start_locally()
     
-    logger.info("\n===== Pipeline Complete =====")
+    logger.info("\n" + "="*50)
+    logger.info("Pipeline Complete")
+    logger.info("="*50)
 
 
 if __name__ == "__main__":
