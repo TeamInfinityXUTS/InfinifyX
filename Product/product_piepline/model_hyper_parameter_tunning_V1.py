@@ -467,7 +467,7 @@ if __name__ == "__main__":
         objective_metric_title="metrics",
         objective_metric_series="accuracy",
         objective_metric_sign="max",
-        execution_queue=args.queue if args.run_mode == "remote" else None,
+        execution_queue=args.queue,
         max_number_of_concurrent_tasks=args.max_concurrent_tasks,
         total_max_jobs=args.total_max_jobs,
         pool_period_min=1.0,
