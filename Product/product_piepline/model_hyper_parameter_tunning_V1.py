@@ -451,6 +451,7 @@ def run_hpo_optimization(
     print(f"Optimizer Task ID: {optimizer_task.id}")
     
     optimizer.start()
+    # Use native wait() without parameters to use ClearML's default polling
     optimizer.wait()
 
     top_experiments = optimizer.get_top_experiments(top_k=3)
