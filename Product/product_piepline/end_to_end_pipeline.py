@@ -165,6 +165,14 @@ def yolo_train_step(yaml_path: str, init_weight: str, epochs: int,
     import torch.nn as nn
     import ultralytics.nn.tasks as tasks
 
+    # ── Fix Ray Tune compatibility (SageMaker has newer ray version) ──
+    try:
+        import ray.train._internal.session as _ray_session
+        if not hasattr(_ray_session, '_get_session'):
+            _ray_session._get_session = lambda: None
+    except (ImportError, AttributeError):
+        pass
+
     # ── Register CBAM + SE ──
     class CBAM(nn.Module):
         def __init__(self, r=16):
