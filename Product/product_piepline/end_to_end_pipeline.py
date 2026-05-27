@@ -896,9 +896,9 @@ def run_pipeline(
         execution_queue=EXECUTION_QUEUE,
     )
 
-    # Start the pipeline locally (tasks run on this machine)
+    # Start the pipeline locally (controller + all steps run in this process)
     logger.info("Starting pipeline locally with tasks on queue: %s", EXECUTION_QUEUE)
-    pipe.start_locally()
+    pipe.start_locally(run_pipeline_steps_locally=True)
     logger.info("Pipeline completed successfully")
 
 
