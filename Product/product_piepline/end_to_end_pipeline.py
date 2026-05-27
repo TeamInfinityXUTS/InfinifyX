@@ -773,7 +773,7 @@ def run_pipeline(
         name="End_To_End_Assisted_Driving_Pipeline",
         project=PROJECT_NAME,
         version="2.0",
-        add_pipeline_tags=False,
+        add_pipeline_tags=True,
     )
     pipe.set_default_execution_queue(EXECUTION_QUEUE)
     logger.info(f"Pipeline execution queue: {EXECUTION_QUEUE}")
